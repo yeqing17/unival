@@ -20,7 +20,7 @@ dist/
 *.swo
 
 # 测试文件
-theme-error*.json
+theme*.json
 *副本*
 
 # OS

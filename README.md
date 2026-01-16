@@ -58,8 +58,7 @@ pip install json5 tkinterdnd2
 ```
 unival/
 ├── unival.py      # 主程序
-├── README.md      # 说明文档
-└── theme.json     # 示例文件
+└── README.md      # 说明文档
 ```
 
 ---
