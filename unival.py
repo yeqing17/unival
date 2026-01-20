@@ -2,9 +2,18 @@ import json5
 import yaml
 import re
 import os
+import hashlib
 import tkinter as tk
 from tkinter import scrolledtext
 from tkinterdnd2 import DND_FILES, TkinterDnD
+
+def calculate_md5(file_path):
+    """计算文件的MD5值"""
+    hash_md5 = hashlib.md5()
+    with open(file_path, 'rb') as f:
+        for chunk in iter(lambda: f.read(4096), b''):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
 
 def get_indent(line):
     return len(line) - len(line.lstrip())
@@ -274,42 +283,78 @@ def get_file_type(file_path):
         return 'unknown'
 
 def parse_content_by_file(file_path):
+    filename = os.path.basename(file_path)
+    
+    # 计算文件 MD5
+    try:
+        md5_value = calculate_md5(file_path)
+    except Exception:
+        md5_value = "无法计算"
+    
+    md5_line = f"MD5: {md5_value}"
+    
+    file_type = get_file_type(file_path)
+    
+    # 不支持的文件类型，只显示 MD5
+    if file_type == 'unknown':
+        return f"【文件】: {filename}\n------------------\n{md5_line}\n（不支持的文件格式，仅显示MD5）"
+    
+    # 读取文件内容
     content = None
     for enc in ['utf-8', 'gbk', 'utf-16']:
         try:
             with open(file_path, 'r', encoding=enc) as f: content = f.read()
             break
         except UnicodeDecodeError: continue
-    if not content: return "解析失败：无法读取文件内容。"
-    
-    file_type = get_file_type(file_path)
+    if not content: return f"【文件】: {filename}\n------------------\n{md5_line}\n解析失败：无法读取文件内容。"
     
     # YAML 文件处理
     if file_type == 'yaml':
-        return parse_yaml_content(content, file_path)
+        result = parse_yaml_content(content, file_path)
+        return f"{result}\n{md5_line}"
     
-    # JSON/JSON5 文件处理（默认）
+    # JSON/JSON5 文件处理
     success, msg, context = check_structural_balance(content)
     if not success:
-        return f"【文件】: {os.path.basename(file_path)}\n------------------\n{msg}\n{context}"
+        return f"【文件】: {filename}\n------------------\n{msg}\n{context}\n{md5_line}"
     try:
         json5.loads(content)
         if re.search(r',\s*[}\]]', get_clean_content(content)):
-            return f"【文件】: {os.path.basename(file_path)}\n------------------\n语法错误：检测到异常尾随逗号"
-        return f"【文件】: {os.path.basename(file_path)}\n------------------\n解析正常"
+            return f"【文件】: {filename}\n------------------\n语法错误：检测到异常尾随逗号\n{md5_line}"
+        return f"【文件】: {filename}\n------------------\n解析正常\n{md5_line}"
     except Exception as e:
-        return f"【文件】: {os.path.basename(file_path)}\n------------------\n解析错误: {e}"
+        return f"【文件】: {filename}\n------------------\n解析错误: {e}\n{md5_line}"
+
+# 全局变量保存当前文件的MD5值
+current_md5 = ""
 
 def on_drop(event):
+    global current_md5
     files = root.tk.splitlist(event.data)
     if not files: return
-    result = parse_content_by_file(files[0].strip('{}'))
+    file_path = files[0].strip('{}')
+    
+    # 计算并保存MD5
+    try:
+        current_md5 = calculate_md5(file_path)
+    except:
+        current_md5 = ""
+    
+    result = parse_content_by_file(file_path)
     result_text.config(state=tk.NORMAL)
     result_text.delete('1.0', tk.END)
     result_text.insert(tk.END, result)
-    result_text.tag_config("c", foreground="#00c853" if "解析正常" in result else "#ff1744")
+    result_text.tag_config("c", foreground="#a6e3a1" if "解析正常" in result else "#f38ba8")
     result_text.tag_add("c", "1.0", tk.END)
     result_text.config(state=tk.DISABLED)
+
+def copy_md5():
+    if current_md5:
+        root.clipboard_clear()
+        root.clipboard_append(current_md5)
+        # 临时更改按钮文字提示已复制
+        copy_btn.config(text="已复制!")
+        root.after(1500, lambda: copy_btn.config(text="复制MD5"))
 
 # --- 入口判断：命令行模式 or GUI 模式 ---
 import sys
@@ -323,27 +368,54 @@ if len(sys.argv) > 1:
         else:
             print(f"文件不存在: {file_path}")
 else:
-    # GUI 模式
+    # GUI 模式 - 深色主题
+    # 配色方案
+    COLORS = {
+        'bg': '#1e1e2e',           # 主背景 (深蓝灰)
+        'surface': '#2a2a3c',      # 表面/卡片
+        'border': '#3a3a4c',       # 边框
+        'text': '#cdd6f4',         # 主文字
+        'text_dim': '#6c7086',     # 次要文字
+        'accent': '#89b4fa',       # 强调色 (蓝)
+        'success': '#a6e3a1',      # 成功 (绿)
+        'error': '#f38ba8',        # 错误 (粉红)
+        'btn_primary': '#89b4fa',  # 主按钮
+        'btn_danger': '#f38ba8',   # 危险按钮
+    }
+    
     root = TkinterDnD.Tk()
     root.title("UniVal")
-    root.geometry("480x320")
-    root.configure(bg="#fefefe")
+    root.geometry("520x360")
+    root.configure(bg=COLORS['bg'])
     root.resizable(False, False)
 
-    drop_area = tk.Label(root, text="拖拽 JSON/YAML 文件至此处校验", font=("微软雅黑", 10), bg="#fafafa", fg="#9e9e9e", height=4,
-                         highlightthickness=1, highlightbackground="#e0e0e0")
-    drop_area.pack(fill=tk.X, padx=12, pady=(12, 6))
+    # 拖拽区域
+    drop_area = tk.Label(root, text="📁 拖拽任意文件至此处\n支持 JSON / YAML 校验 + MD5 计算", 
+                         font=("微软雅黑", 11), bg=COLORS['surface'], fg=COLORS['text_dim'], 
+                         height=4, highlightthickness=2, highlightbackground=COLORS['border'])
+    drop_area.pack(fill=tk.X, padx=16, pady=(16, 8))
     drop_area.drop_target_register(DND_FILES)
     drop_area.dnd_bind('<<Drop>>', on_drop)
 
-    result_text = scrolledtext.ScrolledText(root, height=9, font=("Consolas", 10), state=tk.DISABLED, bg="#fff", fg="#424242",
-                                            relief="flat", highlightthickness=1, highlightbackground="#eee")
-    result_text.pack(fill=tk.BOTH, padx=12, expand=True)
+    # 结果显示区
+    result_text = scrolledtext.ScrolledText(root, height=10, font=("Consolas", 11), state=tk.DISABLED, 
+                                            bg=COLORS['surface'], fg=COLORS['text'],
+                                            relief="flat", highlightthickness=2, highlightbackground=COLORS['border'],
+                                            insertbackground=COLORS['text'])
+    result_text.pack(fill=tk.BOTH, padx=16, expand=True)
 
-    footer = tk.Frame(root, bg="#fefefe")
-    footer.pack(fill=tk.X, padx=12, pady=8)
-    tk.Label(footer, text="v2.0.0", font=("Consolas", 8), bg="#fefefe", fg="#bdbdbd").pack(side=tk.LEFT)
-    tk.Button(footer, text="退出", command=root.destroy, bg="#ff5252", fg="white", relief="flat", font=("微软雅黑", 9), padx=10).pack(side=tk.RIGHT)
+    # 底部栏
+    footer = tk.Frame(root, bg=COLORS['bg'])
+    footer.pack(fill=tk.X, padx=16, pady=12)
+    
+    tk.Label(footer, text="v3.0.0", font=("Consolas", 9), bg=COLORS['bg'], fg=COLORS['text_dim']).pack(side=tk.LEFT)
+    
+    tk.Button(footer, text="退出", command=root.destroy, bg=COLORS['btn_danger'], fg='#1e1e2e', 
+              relief="flat", font=("微软雅黑", 9, "bold"), padx=12, pady=2, cursor="hand2").pack(side=tk.RIGHT)
+    
+    copy_btn = tk.Button(footer, text="复制MD5", command=copy_md5, bg=COLORS['btn_primary'], fg='#1e1e2e', 
+                         relief="flat", font=("微软雅黑", 9, "bold"), padx=12, pady=2, cursor="hand2")
+    copy_btn.pack(side=tk.RIGHT, padx=(0, 10))
 
     root.mainloop()
 

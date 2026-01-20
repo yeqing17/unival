@@ -11,6 +11,7 @@
 - **缺失逗号检测**：发现遗漏逗号的行
 - **YAML 缩进检测**：检测空格/Tab 混用、缩进层级异常
 - **重复键检测**：发现同层级重复定义的键名（YAML）
+- **MD5 计算**：显示文件 MD5 值，任意文件格式均可计算
 - **命令行 & GUI 双模式**：支持 Linux 服务器和 Windows 桌面使用
 
 ---
@@ -85,8 +86,8 @@ pyinstaller --onefile --windowed --icon=icon/icon.ico --name=UniVal unival.py
 ### GitHub Actions 自动编译
 推送 `v*` 格式的 tag 会自动触发编译并发布 Release：
 ```bash
-git tag v2.0.0
-git push origin v2.0.0
+git tag v3.0.0
+git push origin v3.0.0
 ```
 
 ---
