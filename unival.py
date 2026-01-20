@@ -1,4 +1,5 @@
 import json5
+import yaml
 import re
 import os
 import tkinter as tk
@@ -7,6 +8,186 @@ from tkinterdnd2 import DND_FILES, TkinterDnD
 
 def get_indent(line):
     return len(line) - len(line.lstrip())
+
+# ==================== YAML 检测函数 ====================
+
+def check_yaml_indent_consistency(content):
+    """检测YAML缩进一致性：空格/Tab混用问题"""
+    lines = content.split('\n')
+    has_tabs = False
+    has_spaces = False
+    mixed_lines = []
+    
+    for idx, line in enumerate(lines, 1):
+        if not line.strip() or line.strip().startswith('#'):
+            continue
+        leading = line[:len(line) - len(line.lstrip())]
+        if '\t' in leading:
+            has_tabs = True
+            if ' ' in leading:
+                mixed_lines.append(idx)
+        elif ' ' in leading:
+            has_spaces = True
+    
+    if mixed_lines:
+        return False, f"缩进错误：第 {mixed_lines[0]} 行存在空格与Tab混用", \
+               f"参考分析：该行的缩进同时包含空格和Tab字符，YAML规范建议只使用空格。\n涉及行号：{mixed_lines[:5]}{'...' if len(mixed_lines) > 5 else ''}"
+    
+    if has_tabs and has_spaces:
+        return False, "缩进警告：文件中同时存在Tab和空格缩进", \
+               "参考分析：建议统一使用空格进行缩进（推荐2或4个空格）"
+    
+    return True, "", ""
+
+def check_yaml_indent_levels(content):
+    """检测YAML缩进层级问题"""
+    lines = content.split('\n')
+    indent_stack = [0]
+    
+    for idx, line in enumerate(lines, 1):
+        if not line.strip() or line.strip().startswith('#'):
+            continue
+        
+        current_indent = get_indent(line)
+        prev_indent = indent_stack[-1]
+        
+        # 检查缩进是否合理
+        if current_indent > prev_indent:
+            # 缩进增加，记录新层级
+            indent_stack.append(current_indent)
+        elif current_indent < prev_indent:
+            # 缩进减少，回退到之前的层级
+            while indent_stack and indent_stack[-1] > current_indent:
+                indent_stack.pop()
+            if not indent_stack or indent_stack[-1] != current_indent:
+                # 缩进不匹配任何已知层级
+                return False, f"缩进错误：第 {idx} 行缩进异常", \
+                       f"参考分析：当前缩进 {current_indent} 个空格，但无法对应到任何上级层级。\n期望的缩进层级为：{indent_stack}"
+    
+    return True, "", ""
+
+def check_yaml_colon_space(content):
+    """检测YAML冒号后是否有空格"""
+    lines = content.split('\n')
+    
+    for idx, line in enumerate(lines, 1):
+        stripped = line.strip()
+        if not stripped or stripped.startswith('#'):
+            continue
+        
+        # 检查键值对格式 key:value (冒号后无空格)
+        # 但要排除 URL 中的冒号（如 http://）
+        if ':' in stripped and not stripped.endswith(':'):
+            # 查找所有冒号位置
+            for i, char in enumerate(stripped):
+                if char == ':':
+                    # 跳过URL中的冒号
+                    if i > 0 and stripped[i-1:i+2] in ['://']:
+                        continue
+                    # 检查冒号是否在字符串内（简单判断）
+                    if i + 1 < len(stripped) and stripped[i+1] not in [' ', '\t', '\n', '/', '\\']:
+                        # 可能是没有空格的键值对
+                        if '"' not in stripped[:i] and "'" not in stripped[:i]:
+                            # 排除端口号等纯数字情况
+                            rest = stripped[i+1:].strip()
+                            if rest and not rest[0].isdigit():
+                                return False, f"格式警告：第 {idx} 行冒号后可能缺少空格", \
+                                       f"参考分析：'{stripped[:30]}...' 中的冒号后建议添加空格"
+    
+    return True, "", ""
+
+def check_yaml_duplicate_keys(content):
+    """检测YAML重复键（同一层级）"""
+    lines = content.split('\n')
+    indent_keys = {}  # {缩进级别: {键名: 行号}}
+    current_indent = 0
+    in_list_context = {}  # 记录每个缩进层级是否在列表上下文中
+    
+    for idx, line in enumerate(lines, 1):
+        if not line.strip() or line.strip().startswith('#'):
+            continue
+        
+        indent = get_indent(line)
+        stripped = line.strip()
+        
+        # 缩进变化时重置对应层级的键记录
+        if indent < current_indent:
+            # 清除所有更深层级的记录
+            indent_keys = {k: v for k, v in indent_keys.items() if k <= indent}
+            in_list_context = {k: v for k, v in in_list_context.items() if k < indent}
+        
+        # 检测列表项（- 开头），列表项内的同名键不算重复
+        if stripped.startswith('-'):
+            # 这是一个列表项，清除当前及更深层级的键记录
+            keys_to_clear = [k for k in indent_keys if k >= indent]
+            for k in keys_to_clear:
+                indent_keys[k] = {}
+            in_list_context[indent] = True
+            
+            # 列表项可能包含内联键值对，如 "- name: value"
+            if ':' in stripped:
+                # 提取列表项后的键
+                after_dash = stripped[1:].strip()
+                if ':' in after_dash:
+                    key = after_dash.split(':')[0].strip().strip('"').strip("'")
+                    # 列表项的键在父列表上下文中不检查重复
+        elif ':' in stripped:
+            # 普通键值对
+            key = stripped.split(':')[0].strip().strip('"').strip("'")
+            
+            if indent not in indent_keys:
+                indent_keys[indent] = {}
+            
+            # 只有在非列表上下文中才检查重复键
+            if key in indent_keys[indent]:
+                # 检查是否在列表上下文中
+                parent_indent = max([i for i in in_list_context if i < indent], default=-1)
+                if parent_indent < 0 or not in_list_context.get(parent_indent, False):
+                    prev_line = indent_keys[indent][key]
+                    return False, f"重复键错误：第 {idx} 行的键 '{key}' 重复", \
+                           f"参考分析：该键在第 {prev_line} 行已定义，重复定义会覆盖之前的值"
+            
+            indent_keys[indent][key] = idx
+        
+        current_indent = indent
+    
+    return True, "", ""
+
+
+def parse_yaml_content(content, file_path):
+    """解析YAML内容并返回校验结果"""
+    filename = os.path.basename(file_path)
+    
+    # 1. 检测缩进一致性（空格/Tab混用）
+    success, msg, context = check_yaml_indent_consistency(content)
+    if not success:
+        return f"【文件】: {filename}\n------------------\n{msg}\n{context}"
+    
+    # 2. 检测缩进层级
+    success, msg, context = check_yaml_indent_levels(content)
+    if not success:
+        return f"【文件】: {filename}\n------------------\n{msg}\n{context}"
+    
+    # 3. 检测重复键
+    success, msg, context = check_yaml_duplicate_keys(content)
+    if not success:
+        return f"【文件】: {filename}\n------------------\n{msg}\n{context}"
+    
+    # 4. 使用PyYAML进行最终解析
+    try:
+        yaml.safe_load(content)
+        return f"【文件】: {filename}\n------------------\n解析正常"
+    except yaml.YAMLError as e:
+        error_msg = str(e)
+        # 提取行号信息
+        line_info = ""
+        if hasattr(e, 'problem_mark') and e.problem_mark:
+            mark = e.problem_mark
+            line_info = f"\n定位：第 {mark.line + 1} 行，第 {mark.column + 1} 列"
+        return f"【文件】: {filename}\n------------------\n解析错误: {error_msg}{line_info}"
+
+# ==================== JSON 检测函数 ====================
+
 
 def get_clean_content(content):
     out = []
@@ -82,6 +263,16 @@ def check_structural_balance(content):
         return False, f"结构错误：{len(stack)} 个未闭合", f"{analysis}{thief_info}"
     return True, "", ""
 
+def get_file_type(file_path):
+    """根据文件扩展名判断文件类型"""
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext in ['.yaml', '.yml']:
+        return 'yaml'
+    elif ext in ['.json', '.json5']:
+        return 'json'
+    else:
+        return 'unknown'
+
 def parse_content_by_file(file_path):
     content = None
     for enc in ['utf-8', 'gbk', 'utf-16']:
@@ -91,6 +282,13 @@ def parse_content_by_file(file_path):
         except UnicodeDecodeError: continue
     if not content: return "解析失败：无法读取文件内容。"
     
+    file_type = get_file_type(file_path)
+    
+    # YAML 文件处理
+    if file_type == 'yaml':
+        return parse_yaml_content(content, file_path)
+    
+    # JSON/JSON5 文件处理（默认）
     success, msg, context = check_structural_balance(content)
     if not success:
         return f"【文件】: {os.path.basename(file_path)}\n------------------\n{msg}\n{context}"
@@ -132,7 +330,7 @@ else:
     root.configure(bg="#fefefe")
     root.resizable(False, False)
 
-    drop_area = tk.Label(root, text="拖拽文件至此处校验", font=("微软雅黑", 10), bg="#fafafa", fg="#9e9e9e", height=4,
+    drop_area = tk.Label(root, text="拖拽 JSON/YAML 文件至此处校验", font=("微软雅黑", 10), bg="#fafafa", fg="#9e9e9e", height=4,
                          highlightthickness=1, highlightbackground="#e0e0e0")
     drop_area.pack(fill=tk.X, padx=12, pady=(12, 6))
     drop_area.drop_target_register(DND_FILES)
@@ -144,7 +342,7 @@ else:
 
     footer = tk.Frame(root, bg="#fefefe")
     footer.pack(fill=tk.X, padx=12, pady=8)
-    tk.Label(footer, text="v1.0.0", font=("Consolas", 8), bg="#fefefe", fg="#bdbdbd").pack(side=tk.LEFT)
+    tk.Label(footer, text="v2.0.0", font=("Consolas", 8), bg="#fefefe", fg="#bdbdbd").pack(side=tk.LEFT)
     tk.Button(footer, text="退出", command=root.destroy, bg="#ff5252", fg="white", relief="flat", font=("微软雅黑", 9), padx=10).pack(side=tk.RIGHT)
 
     root.mainloop()

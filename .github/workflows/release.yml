@@ -23,11 +23,15 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pyinstaller json5 tkinterdnd2
+        pip install pyinstaller json5 pyyaml tkinterdnd2 pillow
+
+    - name: Convert PNG to ICO
+      run: |
+        python -c "from PIL import Image; img = Image.open('icon/icon.png'); img.save('icon/icon.ico', format='ICO', sizes=[(256,256),(48,48),(32,32),(16,16)])"
 
     - name: Build EXE
       run: |
-        pyinstaller --onefile --windowed --name UniVal unival.py
+        pyinstaller --onefile --windowed --icon=icon/icon.ico --name UniVal unival.py
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
