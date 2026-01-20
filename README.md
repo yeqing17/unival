@@ -70,9 +70,9 @@ pip install json5 pyyaml tkinterdnd2 pillow
 
 ---
 
-## � 开发指南
+## 📦 开发指南
 
-### � 源码编译 (Build EXE)
+### ⚙️ 源码编译 (Build EXE)
 如果你需要分发给没有 Python 环境的用户使用，可打包为单文件 EXE。
 
 **1. 准备图标**
