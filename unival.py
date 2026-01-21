@@ -408,7 +408,7 @@ else:
     footer = tk.Frame(root, bg=COLORS['bg'])
     footer.pack(fill=tk.X, padx=16, pady=12)
     
-    tk.Label(footer, text="v3.0.0", font=("Consolas", 9), bg=COLORS['bg'], fg=COLORS['text_dim']).pack(side=tk.LEFT)
+    tk.Label(footer, text="v3.0.1", font=("Consolas", 9), bg=COLORS['bg'], fg=COLORS['text_dim']).pack(side=tk.LEFT)
     
     tk.Button(footer, text="退出", command=root.destroy, bg=COLORS['btn_danger'], fg='#1e1e2e', 
               relief="flat", font=("微软雅黑", 9, "bold"), padx=12, pady=2, cursor="hand2").pack(side=tk.RIGHT)
