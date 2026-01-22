@@ -408,7 +408,15 @@ else:
     footer = tk.Frame(root, bg=COLORS['bg'])
     footer.pack(fill=tk.X, padx=16, pady=12)
     
-    tk.Label(footer, text="v3.0.1", font=("Consolas", 9), bg=COLORS['bg'], fg=COLORS['text_dim']).pack(side=tk.LEFT)
+    # GitHub 链接版本号
+    def open_github(event=None):
+        import webbrowser
+        webbrowser.open("https://github.com/yeqing17/unival")
+    
+    version_label = tk.Label(footer, text="⚡ v3.0.3", font=("Consolas", 9), bg=COLORS['bg'], 
+                             fg=COLORS['accent'], cursor="hand2")
+    version_label.pack(side=tk.LEFT)
+    version_label.bind("<Button-1>", open_github)
     
     tk.Button(footer, text="退出", command=root.destroy, bg=COLORS['btn_danger'], fg='#1e1e2e', 
               relief="flat", font=("微软雅黑", 9, "bold"), padx=12, pady=2, cursor="hand2").pack(side=tk.RIGHT)
