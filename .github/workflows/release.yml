@@ -27,7 +27,7 @@ jobs:
 
     - name: Convert PNG to ICO
       run: |
-        python -c "from PIL import Image; img = Image.open('icon/icon.png'); img.save('icon/icon.ico', format='ICO', sizes=[(256,256),(48,48),(32,32),(16,16)])"
+        python -c "from PIL import Image; img = Image.open('icon/icon_transparent.png'); img.save('icon/icon.ico', format='ICO', sizes=[(256,256),(48,48),(32,32),(16,16)])"
 
     - name: Build EXE
       run: |
