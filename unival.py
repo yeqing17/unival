@@ -70,10 +70,12 @@ def check_yaml_indent_levels(content):
                 indent_stack.pop()
             if not indent_stack or indent_stack[-1] != current_indent:
                 # 缩进不匹配任何已知层级
-                return False, f"缩进错误：第 {idx} 行缩进异常", \
-                       f"参考分析：当前缩进 {current_indent} 个空格，但无法对应到任何上级层级。\n期望的缩进层级为：{indent_stack}"
+                return False, f"缩进错误：第 {idx} 行缩进层级不匹配", \
+                       f"参考分析：当前行使用 {current_indent} 个空格缩进，但缩进减少时必须回退到之前使用过的某个层级。\n" \
+                       f"该行之前已使用的缩进层级为：{indent_stack}，当前缩进 {current_indent} 不在其中。"
     
     return True, "", ""
+
 
 def check_yaml_colon_space(content):
     """检测YAML冒号后是否有空格"""
@@ -105,6 +107,41 @@ def check_yaml_colon_space(content):
     
     return True, "", ""
 
+def check_yaml_reserved_chars(content):
+    """检测YAML保留字符：@ 和 ` 不能用于纯标量开头"""
+    lines = content.split('\n')
+    
+    for idx, line in enumerate(lines, 1):
+        stripped = line.strip()
+        if not stripped or stripped.startswith('#'):
+            continue
+        
+        # 检查值部分是否以保留字符开头
+        if ':' in stripped:
+            # 提取冒号后的值部分
+            colon_pos = stripped.find(':')
+            value_part = stripped[colon_pos + 1:].strip()
+            
+            # 检查值是否以 @ 或 ` 开头（且不在引号内）
+            if value_part and value_part[0] in ['@', '`']:
+                if not (value_part.startswith('"') or value_part.startswith("'")):
+                    char = value_part[0]
+                    return False, f"保留字符错误：第 {idx} 行使用了保留字符 '{char}'", \
+                           f"参考分析：'{char}' 是YAML保留字符，不能用于纯标量值的开头。\n" \
+                           f"修正建议：请使用引号包裹该值，例如：\"{value_part}\" 或 '{value_part}'"
+        
+        # 检查列表项值
+        if stripped.startswith('-'):
+            value_part = stripped[1:].strip()
+            if value_part and value_part[0] in ['@', '`']:
+                if not (value_part.startswith('"') or value_part.startswith("'")):
+                    char = value_part[0]
+                    return False, f"保留字符错误：第 {idx} 行使用了保留字符 '{char}'", \
+                           f"参考分析：'{char}' 是YAML保留字符，不能用于纯标量值的开头。\n" \
+                           f"修正建议：请使用引号包裹该值"
+    
+    return True, "", ""
+
 def check_yaml_duplicate_keys(content):
     """检测YAML重复键（同一层级）"""
     lines = content.split('\n')
@@ -112,12 +149,36 @@ def check_yaml_duplicate_keys(content):
     current_indent = 0
     in_list_context = {}  # 记录每个缩进层级是否在列表上下文中
     
+    # 额外检测：相邻行相同缩进的重复键（即使整体缩进逻辑有问题）
+    prev_key = None
+    prev_key_line = None
+    prev_indent = None
+    
     for idx, line in enumerate(lines, 1):
         if not line.strip() or line.strip().startswith('#'):
             continue
         
         indent = get_indent(line)
         stripped = line.strip()
+        
+        # 提取当前行的键名（如果有）
+        current_key = None
+        if ':' in stripped and not stripped.startswith('-'):
+            current_key = stripped.split(':')[0].strip().strip('"').strip("'")
+        
+        # 相邻行相同缩进的重复键检测（更宽松的检测，不依赖完整的缩进层级分析）
+        if current_key and prev_key and indent == prev_indent:
+            if current_key == prev_key:
+                return False, f"重复键错误：第 {idx} 行的键 '{current_key}' 与第 {prev_key_line} 行重复", \
+                       f"参考分析：连续两行出现了相同的键名 '{current_key}'，这在YAML中是不允许的。\n" \
+                       f"修正建议：如需配置多个值，请使用数组语法，例如：\n" \
+                       f"    {current_key}:\n    - 值1\n    - 值2"
+        
+        # 更新前一个键的信息
+        if current_key:
+            prev_key = current_key
+            prev_key_line = idx
+            prev_indent = indent
         
         # 缩进变化时重置对应层级的键记录
         if indent < current_indent:
@@ -132,6 +193,10 @@ def check_yaml_duplicate_keys(content):
             for k in keys_to_clear:
                 indent_keys[k] = {}
             in_list_context[indent] = True
+            # 列表项不作为前一个键
+            prev_key = None
+            prev_key_line = None
+            prev_indent = None
             
             # 列表项可能包含内联键值对，如 "- name: value"
             if ':' in stripped:
@@ -154,7 +219,9 @@ def check_yaml_duplicate_keys(content):
                 if parent_indent < 0 or not in_list_context.get(parent_indent, False):
                     prev_line = indent_keys[indent][key]
                     return False, f"重复键错误：第 {idx} 行的键 '{key}' 重复", \
-                           f"参考分析：该键在第 {prev_line} 行已定义，重复定义会覆盖之前的值"
+                           f"参考分析：该键在第 {prev_line} 行已定义，重复定义会导致数据丢失。\n" \
+                           f"修正建议：如需配置多个值，请使用数组语法，例如：\n" \
+                           f"    {key}:\n    - 值1\n    - 值2"
             
             indent_keys[indent][key] = idx
         
@@ -167,33 +234,57 @@ def parse_yaml_content(content, file_path):
     """解析YAML内容并返回校验结果"""
     filename = os.path.basename(file_path)
     
-    # 1. 检测缩进一致性（空格/Tab混用）
+    # 收集所有错误
+    errors = []
+    
+    # 1. 检测缩进一致性（空格/Tab混用）- 这个问题严重，单独检测
     success, msg, context = check_yaml_indent_consistency(content)
     if not success:
-        return f"【文件】: {filename}\n------------------\n{msg}\n{context}"
+        errors.append((msg, context))
     
     # 2. 检测缩进层级
     success, msg, context = check_yaml_indent_levels(content)
     if not success:
-        return f"【文件】: {filename}\n------------------\n{msg}\n{context}"
+        errors.append((msg, context))
     
     # 3. 检测重复键
     success, msg, context = check_yaml_duplicate_keys(content)
     if not success:
-        return f"【文件】: {filename}\n------------------\n{msg}\n{context}"
+        errors.append((msg, context))
     
-    # 4. 使用PyYAML进行最终解析
+    # 4. 检测保留字符（@ 和 `）
+    success, msg, context = check_yaml_reserved_chars(content)
+    if not success:
+        errors.append((msg, context))
+    
+    # 5. 使用PyYAML进行最终解析（可能捕获其他错误）
+    yaml_parse_error = None
     try:
         yaml.safe_load(content)
-        return f"【文件】: {filename}\n------------------\n解析正常"
     except yaml.YAMLError as e:
         error_msg = str(e)
-        # 提取行号信息
         line_info = ""
         if hasattr(e, 'problem_mark') and e.problem_mark:
             mark = e.problem_mark
             line_info = f"\n定位：第 {mark.line + 1} 行，第 {mark.column + 1} 列"
-        return f"【文件】: {filename}\n------------------\n解析错误: {error_msg}{line_info}"
+        yaml_parse_error = f"YAML解析器报错: {error_msg}{line_info}"
+    
+    # 返回结果
+    if errors:
+        result = f"【文件】: {filename}\n------------------"
+        for i, (msg, context) in enumerate(errors, 1):
+            if len(errors) > 1:
+                result += f"\n[问题 {i}] {msg}\n{context}"
+            else:
+                result += f"\n{msg}\n{context}"
+        # 如果有YAML解析器的额外错误，也附加显示
+        if yaml_parse_error and len(errors) > 0:
+            result += f"\n\n[YAML解析器] {yaml_parse_error}"
+        return result
+    elif yaml_parse_error:
+        return f"【文件】: {filename}\n------------------\n{yaml_parse_error}"
+    else:
+        return f"【文件】: {filename}\n------------------\n解析正常"
 
 # ==================== JSON 检测函数 ====================
 
@@ -413,7 +504,7 @@ else:
         import webbrowser
         webbrowser.open("https://github.com/yeqing17/unival")
     
-    version_label = tk.Label(footer, text="⚡ v3.0.3", font=("Consolas", 9), bg=COLORS['bg'], 
+    version_label = tk.Label(footer, text="⚡ v3.1.0", font=("Consolas", 9), bg=COLORS['bg'], 
                              fg=COLORS['accent'], cursor="hand2")
     version_label.pack(side=tk.LEFT)
     version_label.bind("<Button-1>", open_github)
