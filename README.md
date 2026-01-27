@@ -108,9 +108,8 @@ pyinstaller --onefile --windowed --icon=icon/icon.ico --name=UniVal unival.py
 ```
 unival/
 ├── unival.py           # 核心源码 (GUI + 逻辑)
-├── theme-error.json    # 测试用例文件
 ├── icon/               # 图标资源目录
-│   ├── icon.png        # 原图
+│   ├── icon.png/icon_transparent.png        # 原图/透明图
 │   └── icon.ico        # 编译用图标
 ├── .github/workflows/  # GitHub Actions 自动构建配置
 ├── CHANGELOG.md        # 版本更新记录
