@@ -13,26 +13,27 @@
   - **智能注释识别**：自动忽略 `//` 和 `/* */` 注释
   - **结构平衡分析**：追踪 `{}`、`[]`、`""` 层级，精确定位括号不匹配
   - **逗号检测**：智能识别缺失逗号和异常尾随逗号
-- **YAML** (遵循 [YAML 1.2.2 规范](https://yaml.org/spec/1.2.2/))
-  - **缩进一致性**：严查空格/Tab 混用，防止隐形缩进错误
-  - **缩进层级**：检测缩进回退时未匹配已知层级的问题
-  - **重复键检测**：发现同一层级下的重复键（含数组语法修正建议）
-  - **保留字符**：检测 `@` 和 `` ` `` 开头的非法纯标量值
-  - **解析器兜底**：使用 PyYAML 捕获未闭合引号、括号、未定义别名等错误
+- **YAML** (基于专业工具 [yamllint](https://github.com/adrienverge/yamllint))
+  - **语法错误**：检测层级未闭合、格式混乱等致命问题
+  - **重复键**：发现同一层级下的重复键（会导致数据丢失）
+  - **缩进规范**：检测缩进不一致、空格数量错误等问题
+  - **格式规范**：冒号空格、大括号空格、行尾空格、空白行过多
+  - **布尔值歧义**：检测 `on/off/yes/no` 等易误解析的值
 
-### 📋 YAML 关键错误检测能力
+### 📋 YAML 检测规则（基于 yamllint）
 
-基于 **YAML 1.2.2 规范 Section 3.3 (Loading Failure Points)** 实现：
+| 类型 | 规则 | 级别 | 说明 |
+|------|------|------|------|
+| **语法** | `syntax` | error | 语法错误，必须修复 |
+| **重复键** | `key-duplicates` | error | 同层级键名重复，会导致数据丢失 |
+| **缩进** | `indentation` | warning | 缩进不一致（推荐 2 空格） |
+| **冒号** | `colons` | warning | 冒号前后空格不规范 |
+| **大括号** | `braces` | warning | 大括号内空格过多 |
+| **行尾空格** | `trailing-spaces` | warning | 行尾存在多余空格 |
+| **空白行** | `empty-lines` | warning | 连续空白行超过 2 行 |
+| **布尔值** | `truthy` | warning | 布尔值歧义（建议用引号包裹） |
+| **行长度** | `line-length` | warning | 单行超过 160 字符 |
 
-| # | 错误类型 | 检测函数 | 说明 |
-|---|---------|---------|------|
-| 1 | Tab 用于缩进 | `check_yaml_indent_consistency` | YAML 规范禁止 Tab 缩进 |
-| 2 | 空格/Tab 混用 | `check_yaml_indent_consistency` | 同一文件应统一缩进方式 |
-| 3 | 缩进层级不匹配 | `check_yaml_indent_levels` | 回退时必须匹配已用层级 |
-| 4 | 重复的映射键 | `check_yaml_duplicate_keys` | 同层级键名必须唯一 |
-| 5 | 保留字符 `@` `` ` `` | `check_yaml_reserved_chars` | 不能用于纯标量开头 |
-| 6 | 未闭合的引号/括号 | PyYAML 解析器 | 结构完整性检查 |
-| 7 | 未定义的别名引用 | PyYAML 解析器 | `*alias` 必须有对应 `&anchor` |
 
 ### 🛠️ 实用工具箱
 - **MD5 计算器**：拖拽任意格式文件，即刻显示并复制 MD5 值
@@ -60,7 +61,7 @@
 ```bash
 python unival.py
 ```
-> **操作提示**：直接将文件拖入窗口即可，程序会自动识别文件类型并输出结果。
+> **操作提示**：将文件或文件夹拖入窗口即可，程序会自动识别文件类型并输出结果。
 
 ### 方式二：命令行工具 (CLI)
 适合脚本调用或批量处理：
@@ -68,7 +69,10 @@ python unival.py
 # 校验单个文件
 python unival.py config.json
 
-# 批量校验
+# 校验整个文件夹（递归扫描）
+python unival.py ./configs/
+
+# 批量校验多个文件
 python unival.py config.yaml data.json
 
 # 获取任意文件 MD5
@@ -82,7 +86,7 @@ python unival.py setup.exe
 确保已安装 Python 3.6+，然后安装核心依赖库：
 
 ```bash
-pip install json5 pyyaml tkinterdnd2 pillow
+pip install json5 pyyaml yamllint tkinterdnd2 pillow
 ```
 
 ---
@@ -121,6 +125,10 @@ unival/
 ## 📄 许可证
 
 本项目采用 [MIT License](LICENSE) 授权开源。
+
+## 🙏 鸣谢
+
+- [yamllint](https://github.com/adrienverge/yamllint) - 本项目 YAML 检测功能完全基于 yamllint 实现，感谢 Adrien Vergé 及所有贡献者
 
 ## 👤 作者
 

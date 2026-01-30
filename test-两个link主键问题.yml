@@ -1,0 +1,226 @@
+#!baseline
+spec: '1.0'
+template:
+  alphav1.1:
+    uuid: ${uuid}
+    buildee: "android<gradle,sdk24,ndk20>"
+    type: apk
+    start: 2020-03-01+08
+    close: 2029-03-02+08
+    source:
+    - url: ${REPO_URL}/app-apk/HomedSTBStandardOne.git                 # xuzx       主体代码模块  TV软终端源代码 
+      tag: v1.0
+      name: HomedSTB_standard_one
+    - url: ${REPO_URL}/player/ijkplayer2.release.git/loading           # zengyong   媒体播放模块  IJK播放器
+      tag: alpha-v1.0
+      name: ijk2
+    - url: ${REPO_URL}/player/mproto.release.git/loading               # zengyong   媒体播放模块  数据传输协议库
+      tag: alpha-v1.0
+      name: mproto
+    - url: ${REPO_URL}/maudio/maudio.release.git/loading               # leon & zengyong   音频处理模块  含混音、回声消除、sip协议栈
+      tag: alpha-v1.0
+      name: maudio
+    - url: ${REPO_URL}/git/playcube/playcube.release.git/loading       # lbyufei   播放服务基础功能模块  含包终端设备接入与数据传输管理、频道数据服务、CA功能、网络接入、网络代理数据服务等
+      tag: alpha-v1.1
+      name: playcube
+    - url: ${REPO_URL}/app-apk/JoinUILibrary.git                       # xuzx      依赖模块  ui基础库
+      tag: v1.0
+    - url: ${REPO_URL}/app-apk/JoinProtocolLibrary.git                 # xuzx      依赖模块  协议处理库
+      tag: v1.0
+    - url: ${REPO_URL}/app-apk/HomedMediaPlayerExo.git                 # xuzx      媒体播放模块  EXO播放器
+      tag: v1.0
+      name: HomedMediaPlayer_exo
+    - url: ${REPO_URL}/app-apk/DummyJointvLib.git                      # xuzx      依赖模块  jointv库
+      tag: v1.0
+    - url: ${REPO_URL}/app-apk/AODataLibraryIPTV.git                   # xuzx      依赖模块  IPTV库
+      tag: v1.0
+      name: AODataLibrary_IPTV
+    - url: ${REPO_URL}/app-apk/XiriLibrary.git                         # xuzx      依赖模块  依赖的代码
+      tag: v1.0
+    - url: ${REPO_URL}/app-apk/HomedDataLibrary.git                    # xuzx      依赖模块  依赖的代码
+      tag: v1.0
+    - url: ${REPO_URL}/app-apk/ZXingLibrary.git                        # xuzx      依赖模块  二维码基础库
+      tag: v1.0
+    - url: ${REPO_URL}/cert/ipanel.cacert.git                          # wuxy & zhouyq   心跳服务公钥配置模块  心跳模块用于解密云端非常规消息的公钥
+      tag: v1.0
+      name: cacert
+    - url: ${REPO_URL}/app-apk/HomedBuildToolkit.git                           # wuxy    基础模块       编译工具
+      tag: v1.0
+      name: toolkit
+    - url: ${REPO_URL}/project/820010/emptyloading.release.git/loading         # wuxy    空Loading模块  预留的空桩子，用于以后新增模块的升级
+      tag: develop-v1.0.4
+      name: loading1
+    - url: ${REPO_URL}/project/820010/emptyloading2.release.git/loading        # wuxy    空Loading模块  预留的空桩子，用于以后新增模块的升级
+      tag: develop-v1.0.2
+      name: loading2
+    - url: ${REPO_URL}/project/820010/emptyloading3.release.git/loading        # wuxy    空Loading模块  预留的空桩子，用于以后新增模块的升级
+      tag: develop-v1.0.1
+      name: loading3
+    - url: ${REPO_URL}/project/820010/emptyloading4.release.git/loading        # wuxy    空Loading模块  预留的空桩子，用于以后新增模块的升级
+      tag: develop-v1.0.1
+      name: loading4
+    - url: ${REPO_URL}/project/820010/emptyloading5.release.git/loading        # wuxy    空Loading模块  预留的空桩子，用于以后新增模块的升级
+      tag: develop-v1.0.1
+      name: loading5
+    - url: ${REPO_URL}/project/820010/emptyloadingcalibs.release.git/loading   # wuxy    空Loading模块  预留的calib桩子，用于以后ca模块的升级
+      tag: develop-v1.0.2
+      name: calibs
+    - url: ${REPO_URL}/app-apk/TVMiddlewareTheme.git                                     # guohui & liangtao  theme资源模块   构建版本时替换指定theme
+      tag:  v1.0.1
+      copy: ["TVMiddlewareTheme/zggd/theme:HomedSTB_standard_one/res-assets/public/"]    # theme文件源路径:目标替换路径
+    - url: ${REPO_URL}/web/WebAppScm.release.git/aar  #xinjiang webapp
+      tag: 70098-v1.0
+    - url: ${REPO_URL}/app-apk/TVMiddlewareResIcons.git
+      tag: v1.0
+      name: res-icons
+    package: []
+    configs: {publictoken: [691cfa5e07a216d8cd24dd8ec65ddf14a883d505], verifytoken: [067dbfba1011e95ef14790d7ca8b58e226241c6c]}
+    build:
+    - configs:
+          sign-apk-id: [7e187310a42c479f8eb783cea71680b8]
+          build-config:
+          - IPANEL_CLOUD_DOMAIN:xjgdcloud.tsytv.com.cn               # iPanelCloud的域名
+          - IPANEL_PULSE:true                                         # 是否启用心跳：true 开启，false 关闭
+          - IPANEL_CLOUD_API:https://xjgdcloud.tsytv.com.cn:50443     # iPanelCloud API接口 URL地址前缀（域名）
+          - IPANEL_CERT_PATH:/assets/ipanel_cert                      # iPanel自签证书存储路径
+          - IPANEL_PULSEKEY_PATH:/assets/ipanel_publickey             # 用于心跳功能，往软终端里面内置 publickey
+          - IPANEL_VERIFYKEY_PATH:/assets/ipanel_verifykey            # loading包验签的公钥的存储路径
+          - int_DATA_CACHE_LEVEL:3                                    # 数据缓存级别：1 enable http cache；2 enable api cache；3 enable custom cache store for core api
+          - int_SAVE_LOCAL_LOG:0
+          - int_LOGIN_DEVICE_ID:2                                     #登录使用oid 
+          - HOMED_HOST:tsyrmt.cn
+          - CONFIG_PROXY_EXCLUDE:re:.*(homed\\.tv|ipanel\\.cn)$
+          - HOMED_SLAVE_PATH:http://slave.%s
+          - HOMED_ACCESS_PATH:http://access.%s
+          - HOMED_WS_PATH:ws://access.%s:12698/chat
+          - HOMED_COLLECT_PATH:http://collect.%s/collect/resource
+          - THEME_CONFIG_URL:http://webclient.tsyrmt.cn/smarttv/theme/theme-E.json
+          - ro_build_rzdsoftversion:R0000001
+          - ro_build_compiletime:231016.23
+          - USB_PROXY_TYPE:global
+          - NETWORK_CONNECT:DHCP|
+          - VGATEE_DHCP_OPTION60:HZCNCSTBV1
+          - VGATEE_DHCP_OPTION60_EXT:HZCNCAMSV1
+          - HOMED_STB_ABILITY:3|30|0|0|1|0|1
+#          - U_NAME:qaidam_hotel
+          gargs: [-PuseDlna=true -PuseChrome=true]                                        #投屏功能
+          gradlename: [smarttvIjkAp_xinjiangChrome]
+          producttype: [debug]
+          pack_name: [xinjiang]
+        link: [aar/.gitpack/pack.zip:HomedSTB_standard_one/aars/ipanel_browser.aar]
+        link: [res-icons/xinjiang:HomedSTB_standard_one/res-icons/zggd]
+        package:
+        - {name: hubei_sign, packer: toolkit/pack/apk_sign, signer: toolkit/sign}
+        - {name: xinjiang_public, packer: toolkit/pack/apk_debug, push: 1 }
+    release:
+        tag: alpha-v1.1
+
+
+
+  releasev1.1:
+    uuid: ${uuid}
+    buildee: "android<gradle,sdk24,ndk20>"
+    type: apk
+    start: 2020-03-01+08
+    close: 2029-03-02+08
+    source:
+    - url: ${REPO_URL}/app-apk/HomedSTBStandardOne.git                 # xuzx       主体代码模块  TV软终端源代码 
+      tag: v1.0
+      name: HomedSTB_standard_one
+    - url: ${REPO_URL}/player/ijkplayer2.release.git/loading           # zengyong   媒体播放模块  IJK播放器
+      tag: alpha-v1.0
+      name: ijk2
+    - url: ${REPO_URL}/player/mproto.release.git/loading               # zengyong   媒体播放模块  数据传输协议库
+      tag: alpha-v1.0
+      name: mproto
+    - url: ${REPO_URL}/git/playcube/playcube.release.git/loading       # lbyufei   播放服务基础功能模块  含包终端设备接入与数据传输管理、频道数据服务、CA功能、网络接入、网络代理数据服务等
+      tag: alpha-v1.1.1325
+      name: playcube
+    - url: ${REPO_URL}/app-apk/JoinUILibrary.git                       # xuzx      依赖模块  ui基础库
+      tag: v1.0
+    - url: ${REPO_URL}/app-apk/JoinProtocolLibrary.git                 # xuzx      依赖模块  协议处理库
+      tag: v1.0
+    - url: ${REPO_URL}/app-apk/HomedMediaPlayerExo.git                 # xuzx      媒体播放模块  EXO播放器
+      tag: v1.0
+      name: HomedMediaPlayer_exo
+    - url: ${REPO_URL}/app-apk/DummyJointvLib.git                      # xuzx      依赖模块  jointv库
+      tag: v1.0
+    - url: ${REPO_URL}/app-apk/AODataLibraryIPTV.git                   # xuzx      依赖模块  IPTV库
+      tag: v1.0
+      name: AODataLibrary_IPTV
+    - url: ${REPO_URL}/app-apk/XiriLibrary.git                         # xuzx      依赖模块  依赖的代码
+      tag: v1.0
+    - url: ${REPO_URL}/app-apk/HomedDataLibrary.git                    # xuzx      依赖模块  依赖的代码
+      tag: v1.0
+    - url: ${REPO_URL}/app-apk/ZXingLibrary.git                        # xuzx      依赖模块  二维码基础库
+      tag: v1.0
+    - url: ${REPO_URL}/cert/ipanel.cacert.git                          # wuxy & zhouyq   心跳服务公钥配置模块  心跳模块用于解密云端非常规消息的公钥
+      tag: v1.0
+      name: cacert
+    - url: ${REPO_URL}/app-apk/HomedBuildToolkit.git                           # wuxy    基础模块       编译工具
+      tag: v1.0
+      name: toolkit
+    - url: ${REPO_URL}/project/820010/emptyloading.release.git/loading         # wuxy    空Loading模块  预留的空桩子，用于以后新增模块的升级
+      tag: develop-v1.0.4
+      name: loading1
+    - url: ${REPO_URL}/project/820010/emptyloading2.release.git/loading        # wuxy    空Loading模块  预留的空桩子，用于以后新增模块的升级
+      tag: develop-v1.0.2
+      name: loading2
+    - url: ${REPO_URL}/project/820010/emptyloading3.release.git/loading        # wuxy    空Loading模块  预留的空桩子，用于以后新增模块的升级
+      tag: develop-v1.0.1
+      name: loading3
+    - url: ${REPO_URL}/project/820010/emptyloading4.release.git/loading        # wuxy    空Loading模块  预留的空桩子，用于以后新增模块的升级
+      tag: develop-v1.0.1
+      name: loading4
+    - url: ${REPO_URL}/project/820010/emptyloading5.release.git/loading        # wuxy    空Loading模块  预留的空桩子，用于以后新增模块的升级
+      tag: develop-v1.0.1
+      name: loading5
+    - url: ${REPO_URL}/project/820010/emptyloadingcalibs.release.git/loading   # wuxy    空Loading模块  预留的calib桩子，用于以后ca模块的升级
+      tag: develop-v1.0.2
+      name: calibs
+    - url: ${REPO_URL}/web/WebAppScm.release.git/aar  #xinjiang webapp
+      tag: 70098-v1.0
+    package: []
+    configs: {publictoken: [691cfa5e07a216d8cd24dd8ec65ddf14a883d505], verifytoken: [067dbfba1011e95ef14790d7ca8b58e226241c6c]}
+    build:
+    - configs:
+          sign-apk-id: [7e187310a42c479f8eb783cea71680b8]
+          build-config:
+          - IPANEL_CLOUD_DOMAIN:ipanelcloud.ipanel.cn                 # iPanelCloud的域名
+          - IPANEL_PULSE:true                                         # 是否启用心跳：true 开启，false 关闭
+          - IPANEL_CLOUD_API:https://ipanelcloud.ipanel.cn:50443      # iPanelCloud API接口 URL地址前缀（域名）
+          - IPANEL_CERT_PATH:/assets/ipanel_cert                      # iPanel自签证书存储路径
+          - IPANEL_PULSEKEY_PATH:/assets/ipanel_publickey             # 用于心跳功能，往软终端里面内置 publickey
+          - IPANEL_VERIFYKEY_PATH:/assets/ipanel_verifykey            # loading包验签的公钥的存储路径
+          - int_DATA_CACHE_LEVEL:3                                    # 数据缓存级别：1 enable http cache；2 enable api cache；3 enable custom cache store for core api
+          - int_SAVE_LOCAL_LOG:0
+          - int_LOGIN_DEVICE_ID:2                                     #登录使用oid 
+          - HOMED_HOST:tsyrmt.cn
+          - CONFIG_PROXY_EXCLUDE:re:.*(homed\\.tv|ipanel\\.cn)$
+          - HOMED_SLAVE_PATH:http://slave.%s
+          - HOMED_ACCESS_PATH:http://access.%s
+          - HOMED_WS_PATH:ws://access.%s:12698/chat
+          - THEME_CONFIG_URL:http://webclient.tsyrmt.cn/smarttv/theme/theme-E.json
+          - ro_build_rzdsoftversion:R0000001
+          - ro_build_compiletime:231016.23
+          - USB_PROXY_TYPE:global
+          - NETWORK_CONNECT:DHCP|
+          - VGATEE_DHCP_OPTION60:HZCNCSTBV1
+          - VGATEE_DHCP_OPTION60_EXT:HZCNCAMSV1
+          - HOMED_STB_ABILITY:3|30|0|0|1|0|1
+          #- U_NAME:XJGD_release
+          gargs: [-PuseDlna=true -PuseChrome=true]                                        #投屏功能
+          gradlename: [smarttvIjkAp_xinjiangChrome]
+          producttype: [debug]
+          pack_name: [xinjiang]
+      link: [aar/.gitpack/pack.zip:HomedSTB_standard_one/aars/ipanel_browser.aar]
+      package:
+      - {name: hubei_sign, packer: toolkit/pack/apk_sign, signer: toolkit/sign}
+      - {name: xinjiang_public, packer: toolkit/pack/apk_release, push: 1 }
+    release:
+        tag: release-v1.1
+
+
+baseline:
+  - using-alphav1.1: {uuid: "067a46cf9f2d45e9bb6d3d851bfd08f9"}
+  - using-releasev1.1: {uuid: "a69f61350aed450293ad327bc7679c82"}

@@ -18,273 +18,198 @@ def calculate_md5(file_path):
 def get_indent(line):
     return len(line) - len(line.lstrip())
 
-# ==================== YAML 检测函数 ====================
+# ==================== YAML 检测函数 (基于 yamllint) ====================
 
-def check_yaml_indent_consistency(content):
-    """检测YAML缩进一致性：空格/Tab混用问题"""
-    lines = content.split('\n')
-    has_tabs = False
-    has_spaces = False
-    mixed_lines = []
-    
-    for idx, line in enumerate(lines, 1):
-        if not line.strip() or line.strip().startswith('#'):
-            continue
-        leading = line[:len(line) - len(line.lstrip())]
-        if '\t' in leading:
-            has_tabs = True
-            if ' ' in leading:
-                mixed_lines.append(idx)
-        elif ' ' in leading:
-            has_spaces = True
-    
-    if mixed_lines:
-        return False, f"缩进错误：第 {mixed_lines[0]} 行存在空格与Tab混用", \
-               f"参考分析：该行的缩进同时包含空格和Tab字符，YAML规范建议只使用空格。\n涉及行号：{mixed_lines[:5]}{'...' if len(mixed_lines) > 5 else ''}"
-    
-    if has_tabs and has_spaces:
-        return False, "缩进警告：文件中同时存在Tab和空格缩进", \
-               "参考分析：建议统一使用空格进行缩进（推荐2或4个空格）"
-    
-    return True, "", ""
+# yamllint 内嵌配置（与项目根目录 .yamllint 保持一致）
+YAMLLINT_CONFIG = """
+extends: default
+rules:
+  # 核心校验规则（warning级别）
+  colons:
+    max-spaces-after: 1
+    max-spaces-before: 0
+    level: warning
+  indentation:
+    spaces: 2
+    indent-sequences: consistent
+    check-multi-line-strings: false
+    level: warning
+  braces:
+    max-spaces-inside: 1  # 允许1个空格，适应 { key: value } 风格
+    level: warning
+  trailing-spaces:
+    level: warning
+  truthy:
+    level: warning
+  empty-lines:
+    max: 2
+    max-start: 1
+    max-end: 1
+    level: warning
+  line-length:
+    max: 160
+    level: warning
+  # 关闭纯美观类校验
+  new-lines: disable
+  new-line-at-end-of-file: disable
+  comments-indentation: disable
+  document-start: disable
+  comments: disable
+"""
 
-def check_yaml_indent_levels(content):
-    """检测YAML缩进层级问题"""
-    lines = content.split('\n')
-    indent_stack = [0]
+def parse_yaml_with_yamllint(file_path):
+    """使用 yamllint 检测 YAML 文件，返回格式化的错误列表"""
+    try:
+        from yamllint import linter
+        from yamllint.config import YamlLintConfig
+    except ImportError:
+        return None, "yamllint 未安装，请执行: pip install yamllint"
     
-    for idx, line in enumerate(lines, 1):
-        if not line.strip() or line.strip().startswith('#'):
-            continue
+    try:
+        # 使用内嵌配置
+        config = YamlLintConfig(YAMLLINT_CONFIG)
         
-        current_indent = get_indent(line)
-        prev_indent = indent_stack[-1]
+        # 读取文件内容
+        content = None
+        for enc in ['utf-8', 'gbk', 'utf-16']:
+            try:
+                with open(file_path, 'r', encoding=enc) as f:
+                    content = f.read()
+                break
+            except UnicodeDecodeError:
+                continue
         
-        # 检查缩进是否合理
-        if current_indent > prev_indent:
-            # 缩进增加，记录新层级
-            indent_stack.append(current_indent)
-        elif current_indent < prev_indent:
-            # 缩进减少，回退到之前的层级
-            while indent_stack and indent_stack[-1] > current_indent:
-                indent_stack.pop()
-            if not indent_stack or indent_stack[-1] != current_indent:
-                # 缩进不匹配任何已知层级
-                return False, f"缩进错误：第 {idx} 行缩进层级不匹配", \
-                       f"参考分析：当前行使用 {current_indent} 个空格缩进，但缩进减少时必须回退到之前使用过的某个层级。\n" \
-                       f"该行之前已使用的缩进层级为：{indent_stack}，当前缩进 {current_indent} 不在其中。"
-    
-    return True, "", ""
-
-
-def check_yaml_colon_space(content):
-    """检测YAML冒号后是否有空格"""
-    lines = content.split('\n')
-    
-    for idx, line in enumerate(lines, 1):
-        stripped = line.strip()
-        if not stripped or stripped.startswith('#'):
-            continue
+        if content is None:
+            return None, "无法读取文件内容（编码问题）"
         
-        # 检查键值对格式 key:value (冒号后无空格)
-        # 但要排除 URL 中的冒号（如 http://）
-        if ':' in stripped and not stripped.endswith(':'):
-            # 查找所有冒号位置
-            for i, char in enumerate(stripped):
-                if char == ':':
-                    # 跳过URL中的冒号
-                    if i > 0 and stripped[i-1:i+2] in ['://']:
-                        continue
-                    # 检查冒号是否在字符串内（简单判断）
-                    if i + 1 < len(stripped) and stripped[i+1] not in [' ', '\t', '\n', '/', '\\']:
-                        # 可能是没有空格的键值对
-                        if '"' not in stripped[:i] and "'" not in stripped[:i]:
-                            # 排除端口号等纯数字情况
-                            rest = stripped[i+1:].strip()
-                            if rest and not rest[0].isdigit():
-                                return False, f"格式警告：第 {idx} 行冒号后可能缺少空格", \
-                                       f"参考分析：'{stripped[:30]}...' 中的冒号后建议添加空格"
-    
-    return True, "", ""
-
-def check_yaml_reserved_chars(content):
-    """检测YAML保留字符：@ 和 ` 不能用于纯标量开头"""
-    lines = content.split('\n')
-    
-    for idx, line in enumerate(lines, 1):
-        stripped = line.strip()
-        if not stripped or stripped.startswith('#'):
-            continue
+        # 执行 yamllint 检测
+        problems = list(linter.run(content, config, file_path))
         
-        # 检查值部分是否以保留字符开头
-        if ':' in stripped:
-            # 提取冒号后的值部分
-            colon_pos = stripped.find(':')
-            value_part = stripped[colon_pos + 1:].strip()
+        if not problems:
+            return ([], []), None
+        
+        # 分类收集问题
+        errors = []
+        warnings = []
+        
+        for problem in problems:
+            # 格式化问题信息
+            level = "error" if problem.level == "error" else "warning"
+            rule = problem.rule if problem.rule else "syntax"
+            msg = problem.message if problem.message else str(problem)
             
-            # 检查值是否以 @ 或 ` 开头（且不在引号内）
-            if value_part and value_part[0] in ['@', '`']:
-                if not (value_part.startswith('"') or value_part.startswith("'")):
-                    char = value_part[0]
-                    return False, f"保留字符错误：第 {idx} 行使用了保留字符 '{char}'", \
-                           f"参考分析：'{char}' 是YAML保留字符，不能用于纯标量值的开头。\n" \
-                           f"修正建议：请使用引号包裹该值，例如：\"{value_part}\" 或 '{value_part}'"
+            # 生成中文友好的描述
+            desc = format_yamllint_message(rule, msg, problem.line, problem.column)
+            
+            if level == "error":
+                errors.append((problem.line, problem.column, rule, desc))
+            else:
+                warnings.append((problem.line, problem.column, rule, desc))
         
-        # 检查列表项值
-        if stripped.startswith('-'):
-            value_part = stripped[1:].strip()
-            if value_part and value_part[0] in ['@', '`']:
-                if not (value_part.startswith('"') or value_part.startswith("'")):
-                    char = value_part[0]
-                    return False, f"保留字符错误：第 {idx} 行使用了保留字符 '{char}'", \
-                           f"参考分析：'{char}' 是YAML保留字符，不能用于纯标量值的开头。\n" \
-                           f"修正建议：请使用引号包裹该值"
-    
-    return True, "", ""
+        return (errors, warnings), None
+        
+    except Exception as e:
+        return None, f"yamllint 执行出错: {str(e)}"
 
-def check_yaml_duplicate_keys(content):
-    """检测YAML重复键（同一层级）"""
-    lines = content.split('\n')
-    indent_keys = {}  # {缩进级别: {键名: 行号}}
-    current_indent = 0
-    in_list_context = {}  # 记录每个缩进层级是否在列表上下文中
+def format_yamllint_message(rule, message, line, column):
+    """将 yamllint 的英文消息转换为中文友好格式"""
     
-    # 额外检测：相邻行相同缩进的重复键（即使整体缩进逻辑有问题）
-    prev_key = None
-    prev_key_line = None
-    prev_indent = None
+    # 规则名称映射
+    rule_names = {
+        'syntax': '语法错误',
+        'indentation': '缩进问题',
+        'colons': '冒号格式',
+        'braces': '大括号格式',
+        'trailing-spaces': '行尾空格',
+        'truthy': '布尔值歧义',
+        'empty-lines': '空白行',
+        'line-length': '行长度',
+        'key-duplicates': '重复键',
+        'new-lines': '换行符',
+    }
     
-    for idx, line in enumerate(lines, 1):
-        if not line.strip() or line.strip().startswith('#'):
-            continue
-        
-        indent = get_indent(line)
-        stripped = line.strip()
-        
-        # 提取当前行的键名（如果有）
-        current_key = None
-        if ':' in stripped and not stripped.startswith('-'):
-            current_key = stripped.split(':')[0].strip().strip('"').strip("'")
-        
-        # 相邻行相同缩进的重复键检测（更宽松的检测，不依赖完整的缩进层级分析）
-        if current_key and prev_key and indent == prev_indent:
-            if current_key == prev_key:
-                return False, f"重复键错误：第 {idx} 行的键 '{current_key}' 与第 {prev_key_line} 行重复", \
-                       f"参考分析：连续两行出现了相同的键名 '{current_key}'，这在YAML中是不允许的。\n" \
-                       f"修正建议：如需配置多个值，请使用数组语法，例如：\n" \
-                       f"    {current_key}:\n    - 值1\n    - 值2"
-        
-        # 更新前一个键的信息
-        if current_key:
-            prev_key = current_key
-            prev_key_line = idx
-            prev_indent = indent
-        
-        # 缩进变化时重置对应层级的键记录
-        if indent < current_indent:
-            # 清除所有更深层级的记录
-            indent_keys = {k: v for k, v in indent_keys.items() if k <= indent}
-            in_list_context = {k: v for k, v in in_list_context.items() if k < indent}
-        
-        # 检测列表项（- 开头），列表项内的同名键不算重复
-        if stripped.startswith('-'):
-            # 这是一个列表项，清除当前及更深层级的键记录
-            keys_to_clear = [k for k in indent_keys if k >= indent]
-            for k in keys_to_clear:
-                indent_keys[k] = {}
-            in_list_context[indent] = True
-            # 列表项不作为前一个键
-            prev_key = None
-            prev_key_line = None
-            prev_indent = None
-            
-            # 列表项可能包含内联键值对，如 "- name: value"
-            if ':' in stripped:
-                # 提取列表项后的键
-                after_dash = stripped[1:].strip()
-                if ':' in after_dash:
-                    key = after_dash.split(':')[0].strip().strip('"').strip("'")
-                    # 列表项的键在父列表上下文中不检查重复
-        elif ':' in stripped:
-            # 普通键值对
-            key = stripped.split(':')[0].strip().strip('"').strip("'")
-            
-            if indent not in indent_keys:
-                indent_keys[indent] = {}
-            
-            # 只有在非列表上下文中才检查重复键
-            if key in indent_keys[indent]:
-                # 检查是否在列表上下文中
-                parent_indent = max([i for i in in_list_context if i < indent], default=-1)
-                if parent_indent < 0 or not in_list_context.get(parent_indent, False):
-                    prev_line = indent_keys[indent][key]
-                    return False, f"重复键错误：第 {idx} 行的键 '{key}' 重复", \
-                           f"参考分析：该键在第 {prev_line} 行已定义，重复定义会导致数据丢失。\n" \
-                           f"修正建议：如需配置多个值，请使用数组语法，例如：\n" \
-                           f"    {key}:\n    - 值1\n    - 值2"
-            
-            indent_keys[indent][key] = idx
-        
-        current_indent = indent
+    rule_name = rule_names.get(rule, rule)
+    pos = f"{line}行{column}列"  # 位置信息：中文格式
     
-    return True, "", ""
+    # 常见消息模式翻译
+    if 'wrong indentation' in message:
+        # 提取 expected X but found Y
+        import re
+        match = re.search(r'expected (\d+) but found (\d+)', message)
+        if match:
+            expected, found = match.groups()
+            return f"[{rule_name}] {pos} 缩进应为 {expected} 个空格，实际为 {found} 个"
+    
+    if 'too many spaces' in message:
+        if 'after colon' in message:
+            return f"[{rule_name}] {pos} 冒号后空格过多"
+        if 'inside braces' in message:
+            return f"[{rule_name}] {pos} 大括号内空格过多"
+        if 'before colon' in message:
+            return f"[{rule_name}] {pos} 冒号前不应有空格"
+    
+    if 'trailing spaces' in message:
+        return f"[{rule_name}] {pos} 行尾存在多余空格"
+    
+    if 'too many blank lines' in message:
+        return f"[{rule_name}] {pos} 连续空白行过多"
+    
+    if 'duplication of key' in message:
+        # 提取重复的键名
+        import re
+        match = re.search(r'duplication of key "([^"]+)"', message)
+        if match:
+            key = match.group(1)
+            return f"[{rule_name}] {pos} 键 '{key}' 重复定义（会导致数据丢失）"
+    
+    if 'syntax error' in message or 'expected' in message:
+        return f"[{rule_name}] {pos} {message}"
+    
+    # 默认格式
+    return f"[{rule_name}] {pos} {message}"
 
 
-def parse_yaml_content(content, file_path):
-    """解析YAML内容并返回校验结果"""
+def parse_yaml_content(content_unused, file_path):
+    """解析YAML内容并返回校验结果（使用 yamllint）"""
     filename = os.path.basename(file_path)
     
-    # 收集所有错误
-    errors = []
+    # 使用 yamllint 进行检测
+    result, error = parse_yaml_with_yamllint(file_path)
     
-    # 1. 检测缩进一致性（空格/Tab混用）- 这个问题严重，单独检测
-    success, msg, context = check_yaml_indent_consistency(content)
-    if not success:
-        errors.append((msg, context))
+    # 文件头部分隔线
+    header = f"\n{'━' * 50}\n📄 {filename}\n{'━' * 50}"
     
-    # 2. 检测缩进层级
-    success, msg, context = check_yaml_indent_levels(content)
-    if not success:
-        errors.append((msg, context))
+    if error:
+        # yamllint 执行失败，回退到基础检测
+        return f"{header}\n{error}"
     
-    # 3. 检测重复键
-    success, msg, context = check_yaml_duplicate_keys(content)
-    if not success:
-        errors.append((msg, context))
+    errors, warnings = result
     
-    # 4. 检测保留字符（@ 和 `）
-    success, msg, context = check_yaml_reserved_chars(content)
-    if not success:
-        errors.append((msg, context))
+    # 无问题
+    if not errors and not warnings:
+        return f"{header}\n✅ 解析正常"
     
-    # 5. 使用PyYAML进行最终解析（可能捕获其他错误）
-    yaml_parse_error = None
-    try:
-        yaml.safe_load(content)
-    except yaml.YAMLError as e:
-        error_msg = str(e)
-        line_info = ""
-        if hasattr(e, 'problem_mark') and e.problem_mark:
-            mark = e.problem_mark
-            line_info = f"\n定位：第 {mark.line + 1} 行，第 {mark.column + 1} 列"
-        yaml_parse_error = f"YAML解析器报错: {error_msg}{line_info}"
+    # 格式化输出
+    output = header
     
-    # 返回结果
+    # 先显示 errors（严重问题）
     if errors:
-        result = f"【文件】: {filename}\n------------------"
-        for i, (msg, context) in enumerate(errors, 1):
-            if len(errors) > 1:
-                result += f"\n[问题 {i}] {msg}\n{context}"
-            else:
-                result += f"\n{msg}\n{context}"
-        # 如果有YAML解析器的额外错误，也附加显示
-        if yaml_parse_error and len(errors) > 0:
-            result += f"\n\n[YAML解析器] {yaml_parse_error}"
-        return result
-    elif yaml_parse_error:
-        return f"【文件】: {filename}\n------------------\n{yaml_parse_error}"
-    else:
-        return f"【文件】: {filename}\n------------------\n解析正常"
+        output += f"\n\n❌ 错误 ({len(errors)} 个) - 必须修复:"
+        for i, (line, col, rule, desc) in enumerate(errors, 1):
+            output += f"\n  {i}. {desc}"
+    
+    # 再显示 warnings
+    if warnings:
+        output += f"\n\n⚠️ 警告 ({len(warnings)} 个) - 建议修复:"
+        # 限制显示数量，避免输出过长
+        display_warnings = warnings[:50]
+        for i, (line, col, rule, desc) in enumerate(display_warnings, 1):
+            output += f"\n  {i}. {desc}"
+        if len(warnings) > 50:
+            output += f"\n  ... 还有 {len(warnings) - 50} 个警告未显示"
+    
+    return output
+
 
 # ==================== JSON 检测函数 ====================
 
@@ -387,8 +312,11 @@ def parse_content_by_file(file_path):
     file_type = get_file_type(file_path)
     
     # 不支持的文件类型，只显示 MD5
+    # 文件头部分隔线
+    header = f"\n{'━' * 50}\n📄 {filename}\n{'━' * 50}"
+    
     if file_type == 'unknown':
-        return f"【文件】: {filename}\n------------------\n{md5_line}\n（不支持的文件格式，仅显示MD5）"
+        return f"{header}\n{md5_line}\n（不支持的文件格式，仅显示MD5）"
     
     # 读取文件内容
     content = None
@@ -397,7 +325,7 @@ def parse_content_by_file(file_path):
             with open(file_path, 'r', encoding=enc) as f: content = f.read()
             break
         except UnicodeDecodeError: continue
-    if not content: return f"【文件】: {filename}\n------------------\n{md5_line}\n解析失败：无法读取文件内容。"
+    if not content: return f"{header}\n{md5_line}\n解析失败：无法读取文件内容。"
     
     # YAML 文件处理
     if file_type == 'yaml':
@@ -407,37 +335,167 @@ def parse_content_by_file(file_path):
     # JSON/JSON5 文件处理
     success, msg, context = check_structural_balance(content)
     if not success:
-        return f"【文件】: {filename}\n------------------\n{msg}\n{context}\n{md5_line}"
+        return f"{header}\n❌ {msg}\n{context}\n{md5_line}"
     try:
         json5.loads(content)
         if re.search(r',\s*[}\]]', get_clean_content(content)):
-            return f"【文件】: {filename}\n------------------\n语法错误：检测到异常尾随逗号\n{md5_line}"
-        return f"【文件】: {filename}\n------------------\n解析正常\n{md5_line}"
+            return f"{header}\n❌ 语法错误：检测到异常尾随逗号\n{md5_line}"
+        return f"{header}\n✅ 解析正常\n{md5_line}"
     except Exception as e:
-        return f"【文件】: {filename}\n------------------\n解析错误: {e}\n{md5_line}"
+        return f"{header}\n❌ 解析错误: {e}\n{md5_line}"
 
 # 全局变量保存当前文件的MD5值
 current_md5 = ""
+gui_state = {'save_log': None}  # GUI 状态容器
+
+def get_files_from_path(path):
+    """获取路径下的所有支持文件（支持文件和文件夹）"""
+    supported_extensions = ('.json', '.json5', '.yaml', '.yml')
+    files = []
+    
+    if os.path.isfile(path):
+        files.append(path)
+    elif os.path.isdir(path):
+        for root, dirs, filenames in os.walk(path):
+            for filename in filenames:
+                if filename.lower().endswith(supported_extensions):
+                    files.append(os.path.join(root, filename))
+        files.sort()
+    
+    return files
 
 def on_drop(event):
     global current_md5
-    files = root.tk.splitlist(event.data)
-    if not files: return
-    file_path = files[0].strip('{}')
+    dropped_items = root.tk.splitlist(event.data)
+    if not dropped_items: return
     
-    # 计算并保存MD5
-    try:
-        current_md5 = calculate_md5(file_path)
-    except:
+    # 收集所有文件
+    all_files = []
+    for item in dropped_items:
+        path = item.strip('{}')
+        all_files.extend(get_files_from_path(path))
+    
+    if not all_files:
+        result_text.config(state=tk.NORMAL)
+        result_text.delete('1.0', tk.END)
+        result_text.insert(tk.END, "未找到支持的文件 (.json, .json5, .yaml, .yml)")
+        result_text.config(state=tk.DISABLED)
+        return
+    
+    # 检测所有文件
+    results = []
+    # 分类统计
+    ok_files = []       # 解析正常
+    error_files = []    # 有错误
+    warning_files = []  # 只有警告
+    
+    for file_path in all_files:
+        result = parse_content_by_file(file_path)
+        filename = os.path.basename(file_path)
+        results.append((file_path, result))
+        
+        if "❌" in result or ("错误" in result and "解析正常" not in result):
+            error_files.append(filename)
+        elif "⚠️" in result or "警告" in result:
+            warning_files.append(filename)
+        else:
+            ok_files.append(filename)
+    
+    # 合并结果
+    full_result = "\n\n".join([r[1] for r in results])
+    
+    # 如果是单文件，保存 MD5 并启用复制按钮
+    if len(all_files) == 1:
+        try:
+            current_md5 = calculate_md5(all_files[0])
+        except:
+            current_md5 = ""
+        # 启用复制按钮
+        copy_btn.config(state=tk.NORMAL, bg=COLORS['btn_primary'], fg='#1e1e2e')
+    else:
         current_md5 = ""
+        # 禁用复制按钮（多文件模式）- 浅灰背景 + 浅色文字
+        copy_btn.config(state=tk.DISABLED, bg='#4a4a5c', fg='#b0b0c0')
+        # 生成汇总信息
+        summary = "╔══════════════════════════════════════════════════╗\n"
+        summary += f"║  📊 检测汇总：共 {len(all_files)} 个文件\n"
+        summary += "╠══════════════════════════════════════════════════╣\n"
+        summary += f"║  ✅ 正常: {len(ok_files)} 个\n"
+        summary += f"║  ⚠️ 警告: {len(warning_files)} 个\n"
+        summary += f"║  ❌ 错误: {len(error_files)} 个\n"
+        summary += "╚══════════════════════════════════════════════════╝\n"
+        
+        # 如果有错误文件，列出
+        if error_files:
+            summary += "\n🔴 有错误的文件:\n"
+            for f in error_files:
+                summary += f"   • {f}\n"
+        
+        # 如果有警告文件，列出
+        if warning_files:
+            summary += "\n🟡 有警告的文件:\n"
+            for f in warning_files:
+                summary += f"   • {f}\n"
+        
+        # 如果有正常文件，列出（可选，文件多时可以不显示）
+        if ok_files and len(ok_files) <= 10:
+            summary += "\n🟢 正常的文件:\n"
+            for f in ok_files:
+                summary += f"   • {f}\n"
+        elif ok_files:
+            summary += f"\n🟢 正常的文件: {len(ok_files)} 个 (略)\n"
+        
+        summary += "\n" + "─" * 50 + "\n详细信息:\n" + "─" * 50 + "\n"
+        full_result = summary + full_result
     
-    result = parse_content_by_file(file_path)
+    # 判断整体状态
+    has_error = len(error_files) > 0
+    has_warning = len(warning_files) > 0
+    all_ok = not has_error and not has_warning
+    
+    # 显示结果
     result_text.config(state=tk.NORMAL)
     result_text.delete('1.0', tk.END)
-    result_text.insert(tk.END, result)
-    result_text.tag_config("c", foreground="#a6e3a1" if "解析正常" in result else "#f38ba8")
+    result_text.insert(tk.END, full_result)
+    
+    # 设置颜色
+    if all_ok:
+        color = "#a6e3a1"  # 绿色
+    elif has_error:
+        color = "#f38ba8"  # 红色
+    else:
+        color = "#fab387"  # 橙色
+    
+    result_text.tag_config("c", foreground=color)
     result_text.tag_add("c", "1.0", tk.END)
     result_text.config(state=tk.DISABLED)
+    
+    # 自动保存日志
+    if gui_state['save_log'] and gui_state['save_log'].get():
+        save_log(full_result, all_files)
+
+def save_log(content, files):
+    """保存检测日志到文件"""
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_dir = os.path.dirname(files[0]) if files else "."
+    log_file = os.path.join(log_dir, f"unival_log_{timestamp}.txt")
+    
+    try:
+        with open(log_file, 'w', encoding='utf-8') as f:
+            f.write(f"UniVal 检测日志\n")
+            f.write(f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"文件数: {len(files)}\n")
+            f.write("=" * 50 + "\n\n")
+            f.write(content)
+        # 在 GUI 结果区顶部插入保存通知
+        result_text.config(state=tk.NORMAL)
+        result_text.insert("1.0", f"📝 日志已保存: {log_file}\n\n")
+        result_text.config(state=tk.DISABLED)
+    except Exception as e:
+        result_text.config(state=tk.NORMAL)
+        result_text.insert("1.0", f"❗ 日志保存失败: {e}\n\n")
+        result_text.config(state=tk.DISABLED)
 
 def copy_md5():
     if current_md5:
@@ -449,15 +507,39 @@ def copy_md5():
 
 # --- 入口判断：命令行模式 or GUI 模式 ---
 import sys
+import glob
+
+def get_files_to_check(path):
+    """获取需要检测的文件列表，支持文件和文件夹"""
+    supported_extensions = ('.json', '.json5', '.yaml', '.yml')
+    files = []
+    
+    if os.path.isfile(path):
+        files.append(path)
+    elif os.path.isdir(path):
+        # 递归扫描文件夹
+        for root, dirs, filenames in os.walk(path):
+            for filename in filenames:
+                if filename.lower().endswith(supported_extensions):
+                    files.append(os.path.join(root, filename))
+        files.sort()  # 按路径排序
+    
+    return files
 
 if len(sys.argv) > 1:
-    # 命令行模式：直接校验传入的文件
-    for file_path in sys.argv[1:]:
-        if os.path.isfile(file_path):
-            print(parse_content_by_file(file_path))
-            print()
+    # 命令行模式：支持文件和文件夹
+    all_files = []
+    for path in sys.argv[1:]:
+        files = get_files_to_check(path)
+        if files:
+            all_files.extend(files)
         else:
-            print(f"文件不存在: {file_path}")
+            print(f"路径不存在或无支持的文件: {path}")
+    
+    # 检测所有文件
+    for file_path in all_files:
+        print(parse_content_by_file(file_path))
+        print()
 else:
     # GUI 模式 - 深色主题
     # 配色方案
@@ -481,7 +563,7 @@ else:
     root.resizable(False, False)
 
     # 拖拽区域
-    drop_area = tk.Label(root, text="📁 拖拽任意文件至此处\n支持 JSON / YAML 校验 + MD5 计算", 
+    drop_area = tk.Label(root, text="📁 拖拽文件或文件夹至此处\n支持 JSON / YAML 校验 + MD5 计算", 
                          font=("微软雅黑", 11), bg=COLORS['surface'], fg=COLORS['text_dim'], 
                          height=4, highlightthickness=2, highlightbackground=COLORS['border'])
     drop_area.pack(fill=tk.X, padx=16, pady=(16, 8))
@@ -504,10 +586,18 @@ else:
         import webbrowser
         webbrowser.open("https://github.com/yeqing17/unival")
     
-    version_label = tk.Label(footer, text="⚡ v3.1.0", font=("Consolas", 9), bg=COLORS['bg'], 
+    version_label = tk.Label(footer, text="⚡ v4.0.0", font=("Consolas", 9), bg=COLORS['bg'], 
                              fg=COLORS['accent'], cursor="hand2")
     version_label.pack(side=tk.LEFT)
     version_label.bind("<Button-1>", open_github)
+    
+    # 保存日志复选框
+    gui_state['save_log'] = tk.BooleanVar(value=False)
+    log_checkbox = tk.Checkbutton(footer, text="保存日志", variable=gui_state['save_log'],
+                                   bg=COLORS['bg'], fg=COLORS['text_dim'], 
+                                   selectcolor=COLORS['surface'], activebackground=COLORS['bg'],
+                                   activeforeground=COLORS['text'], font=("微软雅黑", 9))
+    log_checkbox.pack(side=tk.LEFT, padx=(15, 0))
     
     tk.Button(footer, text="退出", command=root.destroy, bg=COLORS['btn_danger'], fg='#1e1e2e', 
               relief="flat", font=("微软雅黑", 9, "bold"), padx=12, pady=2, cursor="hand2").pack(side=tk.RIGHT)

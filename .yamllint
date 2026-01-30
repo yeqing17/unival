@@ -1,0 +1,48 @@
+# 最优配置：保留「易出错」格式校验（warning），关闭纯美观校验，保留核心语法校验
+extends: default
+rules:
+  # ========== 核心：开启5项必要格式校验，改为warning级别 ==========
+  # 1. 冒号前后空格（最易引发解析失败，必须保留）
+  colons:
+    max-spaces-after: 1
+    max-spaces-before: 0
+    level: warning
+
+  # 2. 缩进（层级混乱是解析失败头号原因，必须保留）
+  indentation:
+    spaces: 2
+    indent-sequences: consistent
+    check-multi-line-strings: false
+    level: warning
+
+  # 3. 大括号空格（允许1个空格，适应 { key: value } 风格）
+  braces:
+    max-spaces-inside: 1
+    level: warning
+
+  # 4. 行尾多余空格（避免值类型误判、Git diff混乱）
+  trailing-spaces:
+    level: warning
+
+  # 5. 布尔值拼写歧义（避免字符串被误解析为布尔值，逻辑出错）
+  truthy:
+    level: warning
+
+  # ========== 保留：空白行校验（你要求保留，warning级别） ==========
+  empty-lines:
+    max: 2
+    max-start: 1
+    max-end: 1
+    level: warning
+
+  # ========== 关闭：纯美观类校验（不影响解析，无实际风险） ==========
+  new-lines: disable  # 换行符类型（Windows/Linux差异，不影响解析）
+  new-line-at-end-of-file: disable  # 文件末尾换行（纯格式，兼容所有解析器）
+  comments-indentation: disable  # 注释缩进（不影响解析，纯美观）
+  document-start: disable  # YAML开头---（不影响解析，纯规范）
+  comments: disable  # 注释格式（#后空格，纯美观，不影响解析）
+
+  # ========== 其他：宽松配置（避免冗余警告） ==========
+  line-length:
+    max: 160
+    level: warning

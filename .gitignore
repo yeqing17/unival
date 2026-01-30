@@ -29,3 +29,7 @@ Thumbs.db
 
 # 日志
 *.log
+unival_log_*.txt
+
+# 测试目录
+test-yaml-files/
