@@ -66,8 +66,8 @@ def parse_yaml_with_yamllint(file_path):
         return None, "yamllint 未安装，请执行: pip install yamllint"
     
     try:
-        # 使用内嵌配置
-        config = YamlLintConfig(YAMLLINT_CONFIG)
+        # 使用内嵌配置（通过 content= 参数避免 PyInstaller 打包后找不到默认配置的问题）
+        config = YamlLintConfig(content=YAMLLINT_CONFIG)
         
         # 读取文件内容
         content = None
@@ -586,7 +586,7 @@ else:
         import webbrowser
         webbrowser.open("https://github.com/yeqing17/unival")
     
-    version_label = tk.Label(footer, text="⚡ v4.0.0", font=("Consolas", 9), bg=COLORS['bg'], 
+    version_label = tk.Label(footer, text="⚡ v4.0.1", font=("Consolas", 9), bg=COLORS['bg'], 
                              fg=COLORS['accent'], cursor="hand2")
     version_label.pack(side=tk.LEFT)
     version_label.bind("<Button-1>", open_github)
