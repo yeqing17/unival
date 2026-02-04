@@ -1,7 +1,23 @@
-# 最优配置：保留「易出错」格式校验（warning），关闭纯美观校验，保留核心语法校验
-extends: default
+# UniVal YAML 校验配置
+# 保留「易出错」格式校验（warning），关闭纯美观校验，保留核心语法校验
+#
+# 注意：不使用 extends: default，因为 PyInstaller 打包后会找不到 default.yaml 文件
+# 这里直接定义完整规则，与 unival.py 中的 YAMLLINT_CONFIG 保持一致
+# extends: default  # 已禁用，原因见上
+
+yaml-files:
+  - '*.yaml'
+  - '*.yml'
+
 rules:
-  # ========== 核心：开启5项必要格式校验，改为warning级别 ==========
+  # ========== 启用的规则（默认 error 级别） ==========
+  anchors: enable
+  brackets: enable
+  commas: enable
+  hyphens: enable
+  key-duplicates: enable        # 重复键检测（会导致数据丢失，必须是 error）
+
+  # ========== 核心：开启5项必要格式校验，改为 warning 级别 ==========
   # 1. 冒号前后空格（最易引发解析失败，必须保留）
   colons:
     max-spaces-after: 1
@@ -28,21 +44,27 @@ rules:
   truthy:
     level: warning
 
-  # ========== 保留：空白行校验（你要求保留，warning级别） ==========
+  # ========== 保留：空白行校验（warning级别） ==========
   empty-lines:
     max: 2
     max-start: 1
     max-end: 1
     level: warning
 
-  # ========== 关闭：纯美观类校验（不影响解析，无实际风险） ==========
-  new-lines: disable  # 换行符类型（Windows/Linux差异，不影响解析）
-  new-line-at-end-of-file: disable  # 文件末尾换行（纯格式，兼容所有解析器）
-  comments-indentation: disable  # 注释缩进（不影响解析，纯美观）
-  document-start: disable  # YAML开头---（不影响解析，纯规范）
-  comments: disable  # 注释格式（#后空格，纯美观，不影响解析）
-
   # ========== 其他：宽松配置（避免冗余警告） ==========
   line-length:
     max: 160
     level: warning
+
+  # ========== 关闭：纯美观类校验（不影响解析，无实际风险） ==========
+  new-lines: disable            # 换行符类型（Windows/Linux差异，不影响解析）
+  new-line-at-end-of-file: disable  # 文件末尾换行（纯格式，兼容所有解析器）
+  comments-indentation: disable # 注释缩进（不影响解析，纯美观）
+  document-start: disable       # YAML开头---（不影响解析，纯规范）
+  document-end: disable         # YAML结尾...（不影响解析，纯规范）
+  comments: disable             # 注释格式（#后空格，纯美观，不影响解析）
+  empty-values: disable         # 空值检测（允许空值）
+  float-values: disable         # 浮点数格式（不影响解析）
+  key-ordering: disable         # 键排序（不强制）
+  octal-values: disable         # 八进制值（不影响解析）
+  quoted-strings: disable       # 引号字符串（不强制）

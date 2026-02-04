@@ -20,11 +20,21 @@ def get_indent(line):
 
 # ==================== YAML 检测函数 (基于 yamllint) ====================
 
-# yamllint 内嵌配置（与项目根目录 .yamllint 保持一致）
+# yamllint 内嵌配置（移除 extends: default，直接定义完整规则，解决 PyInstaller 打包问题）
 YAMLLINT_CONFIG = """
-extends: default
+yaml-files:
+  - '*.yaml'
+  - '*.yml'
+
 rules:
-  # 核心校验规则（warning级别）
+  # 启用的规则
+  anchors: enable
+  brackets: enable
+  commas: enable
+  hyphens: enable
+  key-duplicates: enable        # 重复键检测 (error)
+  
+  # 自定义级别的规则
   colons:
     max-spaces-after: 1
     max-spaces-before: 0
@@ -35,7 +45,7 @@ rules:
     check-multi-line-strings: false
     level: warning
   braces:
-    max-spaces-inside: 1  # 允许1个空格，适应 { key: value } 风格
+    max-spaces-inside: 1        # 允许1个空格，适应 { key: value } 风格
     level: warning
   trailing-spaces:
     level: warning
@@ -49,13 +59,21 @@ rules:
   line-length:
     max: 160
     level: warning
-  # 关闭纯美观类校验
+  
+  # 禁用的规则
   new-lines: disable
   new-line-at-end-of-file: disable
   comments-indentation: disable
   document-start: disable
+  document-end: disable
   comments: disable
+  empty-values: disable
+  float-values: disable
+  key-ordering: disable
+  octal-values: disable
+  quoted-strings: disable
 """
+
 
 def parse_yaml_with_yamllint(file_path):
     """使用 yamllint 检测 YAML 文件，返回格式化的错误列表"""
@@ -586,7 +604,7 @@ else:
         import webbrowser
         webbrowser.open("https://github.com/yeqing17/unival")
     
-    version_label = tk.Label(footer, text="⚡ v4.0.1", font=("Consolas", 9), bg=COLORS['bg'], 
+    version_label = tk.Label(footer, text="⚡ v4.0.2", font=("Consolas", 9), bg=COLORS['bg'], 
                              fg=COLORS['accent'], cursor="hand2")
     version_label.pack(side=tk.LEFT)
     version_label.bind("<Button-1>", open_github)
