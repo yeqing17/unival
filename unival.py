@@ -7,6 +7,44 @@ import tkinter as tk
 from tkinter import scrolledtext
 from tkinterdnd2 import DND_FILES, TkinterDnD
 
+# 需要检测的不可见特殊字符（名称 => Unicode 码点）
+INVISIBLE_CHARS = {
+    '\u00a0': 'NO-BREAK SPACE (\\xa0)',
+    '\u200b': 'ZERO WIDTH SPACE (\\u200b)',
+    '\u200c': 'ZERO WIDTH NON-JOINER (\\u200c)',
+    '\u200d': 'ZERO WIDTH JOINER (\\u200d)',
+    '\u00ad': 'SOFT HYPHEN (\\u00ad)',
+    '\u200e': 'LEFT-TO-RIGHT MARK (\\u200e)',
+    '\u200f': 'RIGHT-TO-LEFT MARK (\\u200f)',
+    '\u202a': 'LEFT-TO-RIGHT EMBEDDING (\\u202a)',
+    '\u202b': 'RIGHT-TO-LEFT EMBEDDING (\\u202b)',
+    '\u202c': 'POP DIRECTIONAL FORMATTING (\\u202c)',
+    '\u202d': 'LEFT-TO-RIGHT OVERRIDE (\\u202d)',
+    '\u202e': 'RIGHT-TO-LEFT OVERRIDE (\\u202e)',
+    '\u2060': 'WORD JOINER (\\u2060)',
+    '\ufeff': 'BYTE ORDER MARK (\\ufeff)',
+    '\u3000': 'IDEOGRAPHIC SPACE (\\u3000)',
+}
+
+def check_invisible_chars(content):
+    """检测文件中的不可见特殊字符，返回警告列表"""
+    warnings = []
+    lines = content.split('\n')
+    for idx, line in enumerate(lines):
+        for char, name in INVISIBLE_CHARS.items():
+            if char in line:
+                # 找出该字符在本行中的所有位置
+                col = line.find(char)
+                while col != -1:
+                    pos = f"{idx + 1}行{col + 1}列"
+                    # 取上下文：显示该字符前后的可见内容
+                    ctx_start = max(0, col - 10)
+                    ctx_end = min(len(line), col + 10)
+                    context = line[ctx_start:col] + '◆' + line[col + 1:ctx_end]
+                    warnings.append(f"[不可见字符] {pos} 发现 {name}，上下文: ...{context}...")
+                    col = line.find(char, col + 1)
+    return warnings
+
 def calculate_md5(file_path):
     """计算文件的MD5值"""
     hash_md5 = hashlib.md5()
@@ -348,19 +386,48 @@ def parse_content_by_file(file_path):
     # YAML 文件处理
     if file_type == 'yaml':
         result = parse_yaml_content(content, file_path)
+        # YAML 也检测不可见特殊字符
+        invisible_warnings = check_invisible_chars(content)
+        if invisible_warnings:
+            result += f"\n\n⚠️ 不可见字符警告（共{len(invisible_warnings)}处）："
+            for w in invisible_warnings:
+                result += f"\n  {w}"
         return f"{result}\n{md5_line}"
     
     # JSON/JSON5 文件处理
+    # 先检测不可见特殊字符
+    invisible_warnings = check_invisible_chars(content)
+
     success, msg, context = check_structural_balance(content)
     if not success:
-        return f"{header}\n❌ {msg}\n{context}\n{md5_line}"
+        result = f"{header}\n❌ {msg}\n{context}"
+        if invisible_warnings:
+            result += f"\n⚠️ 不可见字符警告（共{len(invisible_warnings)}处）："
+            for w in invisible_warnings:
+                result += f"\n  {w}"
+        return f"{result}\n{md5_line}"
     try:
         json5.loads(content)
         if re.search(r',\s*[}\]]', get_clean_content(content)):
-            return f"{header}\n❌ 语法错误：检测到异常尾随逗号\n{md5_line}"
+            result = f"{header}\n❌ 语法错误：检测到异常尾随逗号"
+            if invisible_warnings:
+                result += f"\n⚠️ 不可见字符警告（共{len(invisible_warnings)}处）："
+                for w in invisible_warnings:
+                    result += f"\n  {w}"
+            return f"{result}\n{md5_line}"
+        if invisible_warnings:
+            result = f"{header}\n⚠️ 不可见字符警告（共{len(invisible_warnings)}处）："
+            for w in invisible_warnings:
+                result += f"\n  {w}"
+            return f"{result}\n{md5_line}"
         return f"{header}\n✅ 解析正常\n{md5_line}"
     except Exception as e:
-        return f"{header}\n❌ 解析错误: {e}\n{md5_line}"
+        result = f"{header}\n❌ 解析错误: {e}"
+        if invisible_warnings:
+            result += f"\n⚠️ 不可见字符警告（共{len(invisible_warnings)}处）："
+            for w in invisible_warnings:
+                result += f"\n  {w}"
+        return f"{result}\n{md5_line}"
 
 # 全局变量保存当前文件的MD5值
 current_md5 = ""
