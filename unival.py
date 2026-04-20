@@ -671,7 +671,7 @@ else:
         import webbrowser
         webbrowser.open("https://github.com/yeqing17/unival")
     
-    version_label = tk.Label(footer, text="⚡ v4.0.2", font=("Consolas", 9), bg=COLORS['bg'], 
+    version_label = tk.Label(footer, text="⚡ v4.1.0", font=("Consolas", 9), bg=COLORS['bg'], 
                              fg=COLORS['accent'], cursor="hand2")
     version_label.pack(side=tk.LEFT)
     version_label.bind("<Button-1>", open_github)
