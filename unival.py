@@ -1,4 +1,4 @@
-import json5
+import json
 import yaml
 import re
 import os
@@ -298,6 +298,117 @@ def get_clean_content(content):
         i += 1
     return "".join(out)
 
+def _indent_of(line, tab_width=4):
+    """归一化缩进宽度：tab 按 tab_width 展开并对齐到 tab_width 的倍数（tab/空格混用健壮）"""
+    w = 0
+    for ch in line:
+        if ch == '\t':
+            w += tab_width - (w % tab_width)
+        elif ch == ' ':
+            w += 1
+        else:
+            break
+    return w
+
+def _tokenize_brackets(content):
+    """可靠分词：只收集结构性括号 { } [ ]，正确跳过字符串和注释。返回 [(char, line)]，line 为 1-based"""
+    toks = []
+    i = 0
+    n = len(content)
+    line = 1
+    in_str = None
+    in_cmt = None
+    while i < n:
+        ch = content[i]
+        nxt = content[i+1] if i+1 < n else ''
+        if in_cmt == '//':
+            if ch == '\n':
+                in_cmt = None
+                line += 1
+        elif in_cmt == '/*':
+            if ch == '\n':
+                line += 1
+            elif ch == '*' and nxt == '/':
+                in_cmt = None
+                i += 1
+        elif in_str:
+            if ch == '\\':
+                i += 1
+            elif ch == in_str:
+                in_str = None
+        else:
+            if ch == '\n':
+                line += 1
+            elif ch == '/' and nxt == '/':
+                in_cmt = '//'
+                i += 1
+            elif ch == '/' and nxt == '*':
+                in_cmt = '/*'
+                i += 1
+            elif ch in "'\"":
+                in_str = ch
+            elif ch in '{}[]':
+                toks.append((ch, line))
+        i += 1
+    return toks
+
+def locate_unclosed_brace(content):
+    """存在未闭合括号时，用"缩进不匹配 + 跨度最大的叶子"启发式定位最可能缺闭合的对象。
+    返回要拼到"参考分析"末尾的中文提示串（含前导 " ，"）；无法定位时返回 None。
+    原理：少一个 } 后，后续 } 会"借"给外层对象闭合，导致"闭括号缩进 < 开括号缩进"的错配；
+    跨度最大且内部无其它错配的叶子，就是真正缺闭合的对象。"""
+    lines = content.split('\n')
+    total_lines = len(lines)
+    toks = _tokenize_brackets(content)
+
+    # 压缩/单行守卫：结构括号挤在过少的行里，缩进不承载结构信息，定位必然误报
+    distinct_lines = {ln for _, ln in toks}
+    if total_lines <= 1 or len(distinct_lines) < min(len(toks) * 0.3, 20):
+        return None
+
+    # 栈匹配，带括号类型校验
+    pairs = []   # [{'char','open_line','close_line','open_indent','close_indent'}]
+    stack = []   # [{'char','open_line','open_indent'}]
+    for ch, ln in toks:
+        if ch in '{[':
+            stack.append({'char': ch, 'open_line': ln, 'open_indent': _indent_of(lines[ln-1])})
+        else:  # } ]
+            close_indent = _indent_of(lines[ln-1])
+            if not stack:
+                return None   # 多余右括号，由 check_structural_balance 主体兜底
+            opener = stack[-1]
+            if (ch == '}' and opener['char'] != '{') or (ch == ']' and opener['char'] != '['):
+                return (f" ，括号类型不匹配：第 {ln} 行的 '{ch}' "
+                        f"无法闭合第 {opener['open_line']} 行的 '{opener['char']}'")
+            stack.pop()
+            pairs.append({'char': opener['char'], 'open_line': opener['open_line'],
+                          'close_line': ln, 'open_indent': opener['open_indent'],
+                          'close_indent': close_indent})
+
+    # 缩进不匹配配对：闭括号缩进 < 开括号缩进（闭括号是从外层"借"来的）
+    mismatches = [p for p in pairs if p['close_indent'] < p['open_indent']]
+    if not mismatches:
+        # 无缩进不匹配但仍有未闭合 → 可能纯缺文件末尾的闭合括号
+        if stack:
+            outer = min(stack, key=lambda o: o['open_indent'])
+            return (f" ，第 {outer['open_line']} 行的 {outer['char']} "
+                    f"疑似缺少闭合（缩进未见异常，可能在文件末尾附近遗漏）")
+        return None
+
+    # 选择真凶：内部不含其它错配的"叶子"中，跨度最大的（吸收内容最多 = 最可能缺闭合）
+    leaves = [p for p in mismatches
+              if not any(q is not p and q['open_line'] > p['open_line']
+                         and q['close_line'] < p['close_line'] for q in mismatches)]
+    culprit = max((leaves or mismatches), key=lambda p: p['close_line'] - p['open_line'])
+
+    # 从原始行提取对象名
+    idx = culprit['open_line'] - 1
+    target_line = lines[idx] if 0 <= idx < len(lines) else ''
+    m = re.match(r'\s*"([^"]+)"\s*:', target_line)
+    name = m.group(1) if m else target_line.strip()[:24]
+    return (f" ，最可能缺少闭合的是第 {culprit['open_line']} 行 '{name}' "
+            f"开启的 {culprit['char']}，其闭合括号被后续内容顶替")
+
 def check_structural_balance(content):
     clean_content = get_clean_content(content)
     lines = clean_content.split('\n')
@@ -332,16 +443,10 @@ def check_structural_balance(content):
         i += 1
         
     if stack:
-        thief_info = ""
-        residue = stack[-1] 
-        for o_row, o_indent, c_row, c_indent in reversed(matches):
-            if o_row > residue['row'] and c_indent == residue['indent']:
-                target_char = lines[o_row-1].strip()[0]
-                thief_info = f" ，嫌疑位置：第 {o_row} 行 可能多写了左括号{target_char}"
-                break
         item = stack[-1]
         analysis = f"参考分析：第 {item['row']} 行, 第 {item['col']} 列的左括号'{item['char']}'未闭合"
-        return False, f"结构错误：{len(stack)} 个未闭合", f"{analysis}{thief_info}"
+        thief_info = locate_unclosed_brace(content)
+        return False, f"结构错误：{len(stack)} 个未闭合", f"{analysis}{thief_info or ''}"
     return True, "", ""
 
 def get_file_type(file_path):
@@ -349,10 +454,38 @@ def get_file_type(file_path):
     ext = os.path.splitext(file_path)[1].lower()
     if ext in ['.yaml', '.yml']:
         return 'yaml'
-    elif ext in ['.json', '.json5']:
+    elif ext == '.json':
         return 'json'
     else:
         return 'unknown'
+
+def explain_json_error(je, total_lines):
+    """将 json.JSONDecodeError 翻译为友好的中文提示，并附上精确的行列位置"""
+    m = je.msg
+    line, col = je.lineno, je.colno
+    if 'property name enclosed in double quotes' in m:
+        hint = '键名缺少双引号（或上一行少写了逗号）'
+    elif "Expecting ',' delimiter" in m:
+        hint = '缺少逗号'
+    elif "Expecting ':' delimiter" in m:
+        hint = '缺少冒号'
+    elif m.startswith('Expecting value'):
+        hint = '此处不是合法的值（常见原因：单引号、未加引号、十六进制、前导/尾随小数点等 JSONC 不支持的写法）'
+    elif 'Extra data' in m:
+        hint = 'JSON 结束后仍有多余内容'
+    elif 'Unterminated string' in m:
+        hint = '字符串未闭合（缺少结束的双引号）'
+    elif 'Invalid \\escape' in m:
+        hint = '非法的转义字符'
+    elif 'control character' in m:
+        hint = '字符串中包含非法控制字符'
+    else:
+        hint = m
+    # 多行文件中，错误出现在最后一行，通常是某个 } 或 ] 没有闭合
+    # （单行文件不适用；缺括号的情况也会由"结构参考分析"补充说明）
+    if total_lines > 1 and line >= total_lines and ('Expecting' in m or 'End of file' in m):
+        hint += '（位于文件末尾，很可能是某个 } 或 ] 未闭合）'
+    return f'{hint}（第 {line} 行 第 {col} 列）'
 
 def parse_content_by_file(file_path):
     filename = os.path.basename(file_path)
@@ -394,35 +527,42 @@ def parse_content_by_file(file_path):
                 result += f"\n  {w}"
         return f"{result}\n{md5_line}"
     
-    # JSON/JSON5 文件处理
+    # JSON/JSONC 文件处理（按 JSONC = JSON with Comments 规范严格校验）
     # 先检测不可见特殊字符
     invisible_warnings = check_invisible_chars(content)
+    clean_content = get_clean_content(content)
+    total_lines = content.count('\n') + 1
 
-    success, msg, context = check_structural_balance(content)
-    if not success:
-        result = f"{header}\n❌ {msg}\n{context}"
+    # 尾随逗号检测：公司 JSONC 规范不允许尾随逗号。
+    # 单独捕获以给出友好提示（json.loads 对尾随逗号的报错不够直观）
+    if re.search(r',\s*[}\]]', clean_content):
+        result = f"{header}\n❌ 语法错误：检测到异常尾随逗号"
         if invisible_warnings:
             result += f"\n⚠️ 不可见字符警告（共{len(invisible_warnings)}处）："
             for w in invisible_warnings:
                 result += f"\n  {w}"
         return f"{result}\n{md5_line}"
+
+    # 严格 JSONC 解析：标准 JSON + 注释（注释已在 get_clean_content 中剥离为空白）。
+    # 以 json.loads 为权威校验：它能给出精确的首错位置（行:列），且能正确忽略字符串内部的括号，
+    # 避免"结构预检"因字符串里出现的括号而误报；同时正确拒绝 JSON5 私有语法（单引号、裸键、十六进制等）。
     try:
-        json5.loads(content)
-        if re.search(r',\s*[}\]]', get_clean_content(content)):
-            result = f"{header}\n❌ 语法错误：检测到异常尾随逗号"
-            if invisible_warnings:
-                result += f"\n⚠️ 不可见字符警告（共{len(invisible_warnings)}处）："
-                for w in invisible_warnings:
-                    result += f"\n  {w}"
-            return f"{result}\n{md5_line}"
+        json.loads(clean_content)
         if invisible_warnings:
             result = f"{header}\n⚠️ 不可见字符警告（共{len(invisible_warnings)}处）："
             for w in invisible_warnings:
                 result += f"\n  {w}"
             return f"{result}\n{md5_line}"
         return f"{header}\n✅ 解析正常\n{md5_line}"
-    except Exception as e:
-        result = f"{header}\n❌ 解析错误: {e}"
+    except json.JSONDecodeError as je:
+        # 主错误：json 给出的精确首错（翻译为中文 + 行:列）
+        result = f"{header}\n❌ {explain_json_error(je, total_lines)}"
+        # 参考分析：结构预检（括号平衡/缺逗号猜测）。少一个括号的位置天生有歧义，仅作辅助参考。
+        success, msg, context = check_structural_balance(content)
+        if not success:
+            result += f"\n💡 {msg}"
+            if context:
+                result += f"\n{context}"
         if invisible_warnings:
             result += f"\n⚠️ 不可见字符警告（共{len(invisible_warnings)}处）："
             for w in invisible_warnings:
@@ -435,7 +575,7 @@ gui_state = {'save_log': None}  # GUI 状态容器
 
 def get_files_from_path(path):
     """获取路径下的所有支持文件（支持文件和文件夹）"""
-    supported_extensions = ('.json', '.json5', '.yaml', '.yml')
+    supported_extensions = ('.json', '.yaml', '.yml')
     files = []
     
     if os.path.isfile(path):
@@ -463,7 +603,7 @@ def on_drop(event):
     if not all_files:
         result_text.config(state=tk.NORMAL)
         result_text.delete('1.0', tk.END)
-        result_text.insert(tk.END, "未找到支持的文件 (.json, .json5, .yaml, .yml)")
+        result_text.insert(tk.END, "未找到支持的文件 (.json, .yaml, .yml)")
         result_text.config(state=tk.DISABLED)
         return
     
@@ -596,7 +736,7 @@ import glob
 
 def get_files_to_check(path):
     """获取需要检测的文件列表，支持文件和文件夹"""
-    supported_extensions = ('.json', '.json5', '.yaml', '.yml')
+    supported_extensions = ('.json', '.yaml', '.yml')
     files = []
     
     if os.path.isfile(path):
@@ -671,7 +811,7 @@ else:
         import webbrowser
         webbrowser.open("https://github.com/yeqing17/unival")
     
-    version_label = tk.Label(footer, text="⚡ v4.1.0", font=("Consolas", 9), bg=COLORS['bg'], 
+    version_label = tk.Label(footer, text="⚡ v5.0.0", font=("Consolas", 9), bg=COLORS['bg'],
                              fg=COLORS['accent'], cursor="hand2")
     version_label.pack(side=tk.LEFT)
     version_label.bind("<Button-1>", open_github)
