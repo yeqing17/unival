@@ -734,6 +734,50 @@ def copy_md5():
 import sys
 import glob
 
+
+def enable_high_dpi():
+    """Enable Windows per-monitor DPI awareness before creating the Tk window."""
+    if sys.platform != "win32":
+        return
+
+    try:
+        import ctypes
+    except ImportError:
+        return
+
+    user32 = None
+    try:
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        set_dpi_context = user32.SetProcessDpiAwarenessContext
+        set_dpi_context.argtypes = [ctypes.c_void_p]
+        set_dpi_context.restype = ctypes.c_bool
+        if set_dpi_context(ctypes.c_void_p(-4)):
+            return
+        if ctypes.get_last_error() == 5:  # ERROR_ACCESS_DENIED: already configured
+            return
+    except (AttributeError, OSError, ctypes.ArgumentError):
+        pass
+
+    try:
+        shcore = ctypes.WinDLL("shcore", use_last_error=True)
+        set_dpi_awareness = shcore.SetProcessDpiAwareness
+        set_dpi_awareness.argtypes = [ctypes.c_int]
+        set_dpi_awareness.restype = ctypes.c_long
+        result = set_dpi_awareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
+        if result == 0 or result == 0x80070005:  # S_OK / E_ACCESSDENIED
+            return
+    except (AttributeError, OSError, ctypes.ArgumentError):
+        pass
+
+    try:
+        set_dpi_aware = user32.SetProcessDPIAware
+        set_dpi_aware.argtypes = []
+        set_dpi_aware.restype = ctypes.c_bool
+        set_dpi_aware()
+    except (AttributeError, OSError, ctypes.ArgumentError):
+        pass
+
+
 def get_files_to_check(path):
     """获取需要检测的文件列表，支持文件和文件夹"""
     supported_extensions = ('.json', '.yaml', '.yml')
@@ -767,6 +811,8 @@ if len(sys.argv) > 1:
         print()
 else:
     # GUI 模式 - 深色主题
+    enable_high_dpi()
+
     # 配色方案
     COLORS = {
         'bg': '#1e1e2e',           # 主背景 (深蓝灰)
@@ -811,7 +857,7 @@ else:
         import webbrowser
         webbrowser.open("https://github.com/yeqing17/unival")
     
-    version_label = tk.Label(footer, text="⚡ v5.0.0", font=("Consolas", 9), bg=COLORS['bg'],
+    version_label = tk.Label(footer, text="⚡ v5.1.0", font=("Consolas", 9), bg=COLORS['bg'],
                              fg=COLORS['accent'], cursor="hand2")
     version_label.pack(side=tk.LEFT)
     version_label.bind("<Button-1>", open_github)
