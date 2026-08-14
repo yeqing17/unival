@@ -778,6 +778,22 @@ def enable_high_dpi():
         pass
 
 
+def get_dpi_scale(root):
+    """返回当前屏幕 DPI 相对 96 DPI(100% 系统缩放) 的比例。
+
+    开启 Windows DPI 感知后，Tkinter 会按真实 DPI 渲染以"点"为单位的字体（更清晰），
+    但窗口尺寸、内边距等以"像素"为单位的硬编码值不会随之放大，导致高 DPI 下
+    窗口偏小、内容被裁切。用此比例把这些像素值等比放大即可保持布局一致。
+    """
+    try:
+        dpi = float(root.winfo_fpixels('1i'))  # 每英寸像素数
+        if dpi > 0:
+            return dpi / 96.0
+    except Exception:
+        pass
+    return 1.0
+
+
 def get_files_to_check(path):
     """获取需要检测的文件列表，支持文件和文件夹"""
     supported_extensions = ('.json', '.yaml', '.yml')
@@ -829,35 +845,43 @@ else:
     
     root = TkinterDnD.Tk()
     root.title("UniVal")
-    root.geometry("520x360")
+
+    # 按当前 DPI 等比缩放以 96 DPI(100%) 为基准设计的像素尺寸，
+    # 避免高 DPI 下窗口偏小、字体按 DPI 放大后被裁切。
+    dpi_scale = get_dpi_scale(root)
+
+    def px(v):
+        return int(round(v * dpi_scale))
+
+    root.geometry(f"{px(520)}x{px(360)}")
     root.configure(bg=COLORS['bg'])
     root.resizable(False, False)
 
     # 拖拽区域
     drop_area = tk.Label(root, text="📁 拖拽文件或文件夹至此处\n支持 JSON / YAML 校验 + MD5 计算", 
                          font=("微软雅黑", 11), bg=COLORS['surface'], fg=COLORS['text_dim'], 
-                         height=4, highlightthickness=2, highlightbackground=COLORS['border'])
-    drop_area.pack(fill=tk.X, padx=16, pady=(16, 8))
+                         height=4, highlightthickness=px(2), highlightbackground=COLORS['border'])
+    drop_area.pack(fill=tk.X, padx=px(16), pady=(px(16), px(8)))
     drop_area.drop_target_register(DND_FILES)
     drop_area.dnd_bind('<<Drop>>', on_drop)
 
     # 结果显示区
     result_text = scrolledtext.ScrolledText(root, height=10, font=("Consolas", 11), state=tk.DISABLED, 
                                             bg=COLORS['surface'], fg=COLORS['text'],
-                                            relief="flat", highlightthickness=2, highlightbackground=COLORS['border'],
+                                            relief="flat", highlightthickness=px(2), highlightbackground=COLORS['border'],
                                             insertbackground=COLORS['text'])
-    result_text.pack(fill=tk.BOTH, padx=16, expand=True)
+    result_text.pack(fill=tk.BOTH, padx=px(16), expand=True)
 
     # 底部栏
     footer = tk.Frame(root, bg=COLORS['bg'])
-    footer.pack(fill=tk.X, padx=16, pady=12)
+    footer.pack(fill=tk.X, padx=px(16), pady=px(12))
     
     # GitHub 链接版本号
     def open_github(event=None):
         import webbrowser
         webbrowser.open("https://github.com/yeqing17/unival")
     
-    version_label = tk.Label(footer, text="⚡ v5.1.0", font=("Consolas", 9), bg=COLORS['bg'],
+    version_label = tk.Label(footer, text="⚡ v5.1.1", font=("Consolas", 9), bg=COLORS['bg'],
                              fg=COLORS['accent'], cursor="hand2")
     version_label.pack(side=tk.LEFT)
     version_label.bind("<Button-1>", open_github)
@@ -868,14 +892,14 @@ else:
                                    bg=COLORS['bg'], fg=COLORS['text_dim'], 
                                    selectcolor=COLORS['surface'], activebackground=COLORS['bg'],
                                    activeforeground=COLORS['text'], font=("微软雅黑", 9))
-    log_checkbox.pack(side=tk.LEFT, padx=(15, 0))
+    log_checkbox.pack(side=tk.LEFT, padx=(px(15), 0))
     
     tk.Button(footer, text="退出", command=root.destroy, bg=COLORS['btn_danger'], fg='#1e1e2e', 
-              relief="flat", font=("微软雅黑", 9, "bold"), padx=12, pady=2, cursor="hand2").pack(side=tk.RIGHT)
+              relief="flat", font=("微软雅黑", 9, "bold"), padx=px(12), pady=px(2), cursor="hand2").pack(side=tk.RIGHT)
     
     copy_btn = tk.Button(footer, text="复制MD5", command=copy_md5, bg=COLORS['btn_primary'], fg='#1e1e2e', 
-                         relief="flat", font=("微软雅黑", 9, "bold"), padx=12, pady=2, cursor="hand2")
-    copy_btn.pack(side=tk.RIGHT, padx=(0, 10))
+                         relief="flat", font=("微软雅黑", 9, "bold"), padx=px(12), pady=px(2), cursor="hand2")
+    copy_btn.pack(side=tk.RIGHT, padx=(0, px(10)))
 
     root.mainloop()
 
