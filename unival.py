@@ -857,6 +857,14 @@ else:
     root.configure(bg=COLORS['bg'])
     root.resizable(False, False)
 
+    # 源码运行时显示自定义窗口图标；打包后 EXE 已内嵌图标，找不到文件时静默跳过
+    icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'icon', 'icon.ico')
+    try:
+        if os.path.exists(icon_path):
+            root.iconbitmap(icon_path)
+    except Exception:
+        pass
+
     # 拖拽区域
     drop_area = tk.Label(root, text="📁 拖拽文件或文件夹至此处\n支持 JSON / YAML 校验 + MD5 计算", 
                          font=("微软雅黑", 11), bg=COLORS['surface'], fg=COLORS['text_dim'], 
@@ -881,7 +889,7 @@ else:
         import webbrowser
         webbrowser.open("https://github.com/yeqing17/unival")
     
-    version_label = tk.Label(footer, text="⚡ v5.1.1", font=("Consolas", 9), bg=COLORS['bg'],
+    version_label = tk.Label(footer, text="⚡ v5.2.0", font=("Consolas", 9), bg=COLORS['bg'],
                              fg=COLORS['accent'], cursor="hand2")
     version_label.pack(side=tk.LEFT)
     version_label.bind("<Button-1>", open_github)
@@ -893,7 +901,23 @@ else:
                                    selectcolor=COLORS['surface'], activebackground=COLORS['bg'],
                                    activeforeground=COLORS['text'], font=("微软雅黑", 9))
     log_checkbox.pack(side=tk.LEFT, padx=(px(15), 0))
-    
+
+    # 窗口置顶小按钮：置顶时 📌 高亮为强调色，窗口始终浮在其他程序上层，方便拖拽文件
+    def toggle_on_top():
+        topmost_var.set(not topmost_var.get())
+        on = topmost_var.get()
+        root.attributes('-topmost', on)
+        topmost_btn.config(bg=COLORS['accent'] if on else COLORS['surface'],
+                           fg='#1e1e2e' if on else COLORS['text_dim'],
+                           activebackground=COLORS['accent'] if on else COLORS['surface'],
+                           activeforeground='#1e1e2e' if on else COLORS['text_dim'])
+
+    topmost_var = tk.BooleanVar(value=False)
+    topmost_btn = tk.Button(footer, text="📌", command=toggle_on_top, bg=COLORS['surface'],
+                            fg=COLORS['text_dim'], relief="flat", font=("微软雅黑", 10),
+                            padx=px(8), pady=px(2), cursor="hand2")
+    topmost_btn.pack(side=tk.LEFT, padx=(px(15), 0))
+
     tk.Button(footer, text="退出", command=root.destroy, bg=COLORS['btn_danger'], fg='#1e1e2e', 
               relief="flat", font=("微软雅黑", 9, "bold"), padx=px(12), pady=px(2), cursor="hand2").pack(side=tk.RIGHT)
     
