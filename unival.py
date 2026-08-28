@@ -857,8 +857,12 @@ else:
     root.configure(bg=COLORS['bg'])
     root.resizable(False, False)
 
-    # 源码运行时显示自定义窗口图标；打包后 EXE 已内嵌图标，找不到文件时静默跳过
-    icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'icon', 'icon.ico')
+    # 窗口图标：源码运行取源码目录；PyInstaller 打包后取自解压目录（图标已通过 --add-data 打包进 EXE）
+    if getattr(sys, 'frozen', False):
+        icon_base = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
+    else:
+        icon_base = os.path.dirname(os.path.abspath(__file__))
+    icon_path = os.path.join(icon_base, 'icon', 'icon.ico')
     try:
         if os.path.exists(icon_path):
             root.iconbitmap(icon_path)
@@ -889,7 +893,7 @@ else:
         import webbrowser
         webbrowser.open("https://github.com/yeqing17/unival")
     
-    version_label = tk.Label(footer, text="⚡ v5.2.0", font=("Consolas", 9), bg=COLORS['bg'],
+    version_label = tk.Label(footer, text="⚡ v5.2.2", font=("Consolas", 9), bg=COLORS['bg'],
                              fg=COLORS['accent'], cursor="hand2")
     version_label.pack(side=tk.LEFT)
     version_label.bind("<Button-1>", open_github)
