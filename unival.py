@@ -2,10 +2,18 @@ import json
 import yaml
 import re
 import os
+import sys
 import hashlib
+import threading
+import urllib.request
 import tkinter as tk
-from tkinter import scrolledtext
+from tkinter import scrolledtext, messagebox
 from tkinterdnd2 import DND_FILES, TkinterDnD
+
+# 应用版本与 GitHub 发布信息（自动检查更新用）
+APP_VERSION = "5.3.0"
+GITHUB_REPO = "yeqing17/unival"
+RELEASE_URL = f"https://github.com/{GITHUB_REPO}/releases/latest"
 
 # 需要检测的不可见特殊字符（名称 => Unicode 码点）
 INVISIBLE_CHARS = {
@@ -52,6 +60,29 @@ def calculate_md5(file_path):
         for chunk in iter(lambda: f.read(4096), b''):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
+
+def fetch_latest_version(timeout=8):
+    """查询 GitHub 最新 Release 的 tag（如 'v5.2.3'），失败/无 Release 时返回 None"""
+    api = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+    req = urllib.request.Request(api, headers={
+        "User-Agent": "UniVal",  # GitHub API 拒绝无 UA 的请求
+        "Accept": "application/vnd.github+json",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return (data.get("tag_name") or "").strip() or None
+    except Exception:
+        return None
+
+def is_newer_version(remote, local):
+    """点分版本号比较：remote 是否比 local 新（'v5.2.10' > 'v5.2.9'，位数不同按补 0 处理）"""
+    def parts(v):
+        return [int(p) if p.isdigit() else 0 for p in v.strip().lstrip("vV").split(".")]
+    try:
+        return parts(remote) > parts(local)
+    except Exception:
+        return False
 
 def get_indent(line):
     return len(line) - len(line.lstrip())
@@ -731,7 +762,6 @@ def copy_md5():
         root.after(1500, lambda: copy_btn.config(text="复制MD5"))
 
 # --- 入口判断：命令行模式 or GUI 模式 ---
-import sys
 import glob
 
 
@@ -888,15 +918,48 @@ else:
     footer = tk.Frame(root, bg=COLORS['bg'])
     footer.pack(fill=tk.X, padx=px(16), pady=px(12))
     
-    # GitHub 链接版本号
-    def open_github(event=None):
+    # 版本号：点击检查更新；检测到新版本时变绿提示，点击弹窗可前往下载
+    def open_release_page():
         import webbrowser
-        webbrowser.open("https://github.com/yeqing17/unival")
-    
-    version_label = tk.Label(footer, text="⚡ v5.2.2", font=("Consolas", 9), bg=COLORS['bg'],
+        webbrowser.open(RELEASE_URL)
+
+    def notify_update(latest):
+        version_label.config(text=f"⚡ v{APP_VERSION} → {latest} 可更新", fg=COLORS['success'])
+        if messagebox.askyesno("发现新版本",
+                               f"UniVal 最新版本 {latest}（当前 v{APP_VERSION}）。\n\n是否打开下载页面？"):
+            open_release_page()
+
+    update_state = {'checking': False}
+
+    def check_update(manual=False):
+        """后台线程查 GitHub 最新版本。manual=True 时反馈结果；自动检查静默，有新版才提示"""
+        if update_state['checking']:
+            return
+        update_state['checking'] = True
+        if manual:
+            version_label.config(text=f"⚡ v{APP_VERSION} 检查中…", fg=COLORS['text_dim'])
+
+        def worker():
+            latest = fetch_latest_version(timeout=10 if manual else 6)
+
+            def done():
+                update_state['checking'] = False
+                if latest and is_newer_version(latest, APP_VERSION):
+                    notify_update(latest)
+                elif manual:
+                    version_label.config(text=f"⚡ v{APP_VERSION}", fg=COLORS['accent'])
+                    if latest:
+                        messagebox.showinfo("检查更新", f"当前已是最新版本 v{APP_VERSION}")
+                    else:
+                        messagebox.showwarning("检查更新", "无法访问 GitHub，请检查网络后稍后重试")
+            root.after(0, done)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    version_label = tk.Label(footer, text=f"⚡ v{APP_VERSION}", font=("Consolas", 9), bg=COLORS['bg'],
                              fg=COLORS['accent'], cursor="hand2")
     version_label.pack(side=tk.LEFT)
-    version_label.bind("<Button-1>", open_github)
+    version_label.bind("<Button-1>", lambda e: check_update(manual=True))
     
     # 保存日志复选框
     gui_state['save_log'] = tk.BooleanVar(value=False)
@@ -928,6 +991,9 @@ else:
     copy_btn = tk.Button(footer, text="复制MD5", command=copy_md5, bg=COLORS['btn_primary'], fg='#1e1e2e', 
                          relief="flat", font=("微软雅黑", 9, "bold"), padx=px(12), pady=px(2), cursor="hand2")
     copy_btn.pack(side=tk.RIGHT, padx=(0, px(10)))
+
+    # 启动后延迟静默检查一次更新（网络异常完全无感，有新版才弹窗提示）
+    root.after(2000, check_update)
 
     root.mainloop()
 
