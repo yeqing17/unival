@@ -11,7 +11,7 @@ from tkinter import scrolledtext, messagebox
 from tkinterdnd2 import DND_FILES, TkinterDnD
 
 # 应用版本与 GitHub 发布信息（自动检查更新用）
-APP_VERSION = "5.3.2"
+APP_VERSION = "5.3.3"
 GITHUB_REPO = "yeqing17/unival"
 RELEASE_URL = f"https://github.com/{GITHUB_REPO}/releases/latest"
 
@@ -83,6 +83,35 @@ def is_newer_version(remote, local):
         return parts(remote) > parts(local)
     except Exception:
         return False
+
+def sanitize_runtime_tmpdir():
+    """onefile + runtime-tmpdir=. 打包模式下的体验补丁。
+
+    非提权进程可能拿到无效的 TEMP/TMP（bootloader 会退回 C:\\WINDOWS\\TEMP，
+    tkinter 在那里初始化必失败），因此构建时固定解压到 EXE 旁；代价是 EXE 旁
+    会出现 _MEI 目录。这里：1) 把本次运行时目录设为隐藏属性，桌面/资源管理器
+    不再闪现；2) 清理上次强杀/崩溃残留的旧 _MEI 目录。仅打包 EXE 时生效。
+    """
+    if not getattr(sys, 'frozen', False):
+        return
+    base = os.path.dirname(sys.executable)
+    current = getattr(sys, '_MEIPASS', '')
+    if current and os.path.isdir(current):
+        try:
+            import ctypes
+            ctypes.windll.kernel32.SetFileAttributesW(current, 0x2)  # FILE_ATTRIBUTE_HIDDEN
+        except Exception:
+            pass
+    for name in os.listdir(base):
+        target = os.path.join(base, name)
+        if name.startswith('_MEI') and target != current and os.path.isdir(target):
+            try:
+                import shutil
+                shutil.rmtree(target, ignore_errors=True)
+            except Exception:
+                pass
+
+sanitize_runtime_tmpdir()
 
 def get_indent(line):
     return len(line) - len(line.lstrip())

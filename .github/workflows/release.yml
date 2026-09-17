@@ -31,9 +31,11 @@ jobs:
 
     - name: Build EXE
       run: |
-        # 默认解压到用户 TEMP（正常退出自动清理，EXE 旁不再出现 _MEI 目录）
+        # runtime-tmpdir=. : 固定解压到 EXE 旁。不能用默认 TEMP：部分机器非提权进程的
+        # TEMP/TMP 无效，bootloader 会退回 C:\WINDOWS\TEMP 导致 tkinter 初始化失败（实测）。
+        # 桌面可见性与残留清理由应用内 sanitize_runtime_tmpdir() 处理。
         # add-data: 将图标打包进 EXE，供运行时设置窗口/任务栏图标使用
-        pyinstaller --onefile --windowed --add-data "icon/icon.ico;icon" --icon=icon/icon.ico --name UniVal unival.py
+        pyinstaller --onefile --windowed --runtime-tmpdir . --add-data "icon/icon.ico;icon" --icon=icon/icon.ico --name UniVal unival.py
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
