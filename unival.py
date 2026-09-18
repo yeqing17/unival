@@ -7,11 +7,11 @@ import hashlib
 import threading
 import urllib.request
 import tkinter as tk
-from tkinter import scrolledtext, messagebox
+from tkinter import scrolledtext
 from tkinterdnd2 import DND_FILES, TkinterDnD
 
 # 应用版本与 GitHub 发布信息（自动检查更新用）
-APP_VERSION = "5.3.3"
+APP_VERSION = "5.4.0"
 GITHUB_REPO = "yeqing17/unival"
 RELEASE_URL = f"https://github.com/{GITHUB_REPO}/releases/latest"
 
@@ -947,25 +947,43 @@ else:
     footer = tk.Frame(root, bg=COLORS['bg'])
     footer.pack(fill=tk.X, padx=px(16), pady=px(12))
     
-    # 版本号：点击检查更新；检测到新版本时变绿提示，点击弹窗可前往下载
+    # 版本号标签：点击检查更新；有新版本时绿黄脉冲闪动提示，点击直达下载页。
+    # 全程不弹窗，不打断用户。
     def open_release_page():
         import webbrowser
         webbrowser.open(RELEASE_URL)
 
-    def notify_update(latest):
-        version_label.config(text=f"⚡ v{APP_VERSION} → {latest} 可更新", fg=COLORS['success'])
-        if messagebox.askyesno("发现新版本",
-                               f"UniVal 最新版本 {latest}（当前 v{APP_VERSION}）。\n\n是否打开下载页面？"):
-            open_release_page()
+    update_state = {'checking': False, 'latest': None, 'blink_job': None}
 
-    update_state = {'checking': False}
+    def stop_blink():
+        if update_state['blink_job']:
+            root.after_cancel(update_state['blink_job'])
+            update_state['blink_job'] = None
+
+    def blink_step(on):
+        version_label.config(fg=COLORS['success'] if on else '#f9e2af')
+        update_state['blink_job'] = root.after(6000, lambda: blink_step(not on))
+
+    def enter_update_mode(latest):
+        stop_blink()
+        version_label.config(text=f"🆕 v{APP_VERSION} → {latest} · 点击下载更新")
+        blink_step(True)
+
+    def flash_temp(text, color):
+        # 手动检查的临时反馈：短暂显示后恢复常态
+        version_label.config(text=text, fg=color)
+
+        def revert():
+            if not update_state['checking'] and not update_state['latest']:
+                version_label.config(text=f"⚡ v{APP_VERSION}", fg=COLORS['accent'])
+        root.after(2500, revert)
 
     def check_update(manual=False):
-        """后台线程查 GitHub 最新版本。manual=True 时反馈结果；自动检查静默，有新版才提示"""
+        """后台线程查 GitHub 最新版本，结果只反映在版本号标签上"""
         if update_state['checking']:
             return
         update_state['checking'] = True
-        if manual:
+        if manual and not update_state['latest']:
             version_label.config(text=f"⚡ v{APP_VERSION} 检查中…", fg=COLORS['text_dim'])
 
         def worker():
@@ -974,21 +992,27 @@ else:
             def done():
                 update_state['checking'] = False
                 if latest and is_newer_version(latest, APP_VERSION):
-                    notify_update(latest)
+                    update_state['latest'] = latest
+                    enter_update_mode(latest)
                 elif manual:
-                    version_label.config(text=f"⚡ v{APP_VERSION}", fg=COLORS['accent'])
                     if latest:
-                        messagebox.showinfo("检查更新", f"当前已是最新版本 v{APP_VERSION}")
+                        flash_temp(f"✓ v{APP_VERSION} 已是最新", COLORS['success'])
                     else:
-                        messagebox.showwarning("检查更新", "无法访问 GitHub，请检查网络后稍后重试")
+                        flash_temp("⚠ 检查更新失败", COLORS['error'])
             root.after(0, done)
 
         threading.Thread(target=worker, daemon=True).start()
 
+    def on_version_click(event=None):
+        if update_state['latest']:
+            open_release_page()
+        else:
+            check_update(manual=True)
+
     version_label = tk.Label(footer, text=f"⚡ v{APP_VERSION}", font=("Consolas", 9), bg=COLORS['bg'],
                              fg=COLORS['accent'], cursor="hand2")
     version_label.pack(side=tk.LEFT)
-    version_label.bind("<Button-1>", lambda e: check_update(manual=True))
+    version_label.bind("<Button-1>", on_version_click)
     
     # 保存日志复选框
     gui_state['save_log'] = tk.BooleanVar(value=False)
