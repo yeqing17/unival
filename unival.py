@@ -11,7 +11,7 @@ from tkinter import scrolledtext
 from tkinterdnd2 import DND_FILES, TkinterDnD
 
 # 应用版本与 GitHub 发布信息（自动检查更新用）
-APP_VERSION = "5.4.1"
+APP_VERSION = "5.4.2"
 GITHUB_REPO = "yeqing17/unival"
 RELEASE_URL = f"https://github.com/{GITHUB_REPO}/releases/latest"
 
@@ -966,7 +966,7 @@ else:
 
     def enter_update_mode(latest):
         stop_blink()
-        version_label.config(text=f"🆕 v{APP_VERSION} → {latest} · 点击下载更新")
+        version_label.config(text=f"🆕 新版 {latest} 点击下载")
         blink_step(True)
 
     def flash_temp(text, color):
