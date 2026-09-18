@@ -11,7 +11,7 @@ from tkinter import scrolledtext
 from tkinterdnd2 import DND_FILES, TkinterDnD
 
 # 应用版本与 GitHub 发布信息（自动检查更新用）
-APP_VERSION = "5.4.2"
+APP_VERSION = "5.4.3"
 GITHUB_REPO = "yeqing17/unival"
 RELEASE_URL = f"https://github.com/{GITHUB_REPO}/releases/latest"
 
